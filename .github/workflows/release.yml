@@ -1,0 +1,139 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to create release for'
+        required: true
+        default: 'v1.0.0'
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        token: ${{ secrets.GITHUB_TOKEN }}
+      
+    - name: Get version from tag
+      id: get_version
+      run: |
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          echo "VERSION=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+        else
+          echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+        fi
+        echo "Creating release for version: $(cat $GITHUB_OUTPUT | grep VERSION | cut -d'=' -f2)"
+        
+    - name: Verify permissions
+      run: |
+        echo "Repository: ${{ github.repository }}"
+        echo "Actor: ${{ github.actor }}"
+        echo "Event: ${{ github.event_name }}"
+        echo "Ref: ${{ github.ref }}"
+        
+    - name: Update manifest version
+      run: |
+        VERSION=${{ steps.get_version.outputs.VERSION }}
+        # Remove 'v' prefix if present
+        VERSION_NO_V=${VERSION#v}
+        # Update version in manifest.json
+        sed -i 's/"version": ".*"/"version": "'$VERSION_NO_V'"/' custom_components/delonghi_comfort/manifest.json
+        
+    - name: Create integration zip
+      run: |
+        cd custom_components
+        zip -r ../delonghi_comfort.zip delonghi_comfort/
+        cd ..
+        
+    - name: Create release zip with all files
+      run: |
+        # Create a temporary directory for the release
+        mkdir -p release_temp
+        
+        # Copy integration files
+        cp -r custom_components release_temp/
+        
+        # Copy documentation and license files
+        cp README.md release_temp/
+        cp LICENSE release_temp/
+        cp NOTICE release_temp/
+        
+        # Create the release zip
+        cd release_temp
+        zip -r ../delonghi-comfort-integration-${{ steps.get_version.outputs.VERSION }}.zip .
+        cd ..
+        
+    - name: Generate release notes
+      id: release_notes
+      run: |
+        VERSION=${{ steps.get_version.outputs.VERSION }}
+        cat > release_notes.md << EOF
+        # De'Longhi Comfort Home Assistant Integration ${VERSION}
+        
+        ## Installation
+        
+        ### Method 1: HACS (Recommended)
+        1. Add this repository as a custom repository in HACS
+        2. Install "De'Longhi Comfort" integration
+        3. Restart Home Assistant
+        
+        ### Method 2: Manual Installation
+        1. Download \`delonghi_comfort.zip\` from the assets below
+        2. Extract the \`delonghi_comfort\` folder to your \`custom_components\` directory
+        3. Restart Home Assistant
+        
+        ### Method 3: Complete Package
+        Download \`delonghi-comfort-integration-${VERSION}.zip\` for the complete package including documentation.
+        
+        ## What's Included
+        - Complete Home Assistant integration for De'Longhi Comfort devices
+        - Climate control with temperature, mode, and fan speed settings
+        - Sensors for temperature, humidity, and device status
+        - Configuration flow for easy setup
+        - Apache 2.0 licensed
+        
+        ## Tested Devices
+        - De'Longhi PAC EL112 CST WIFI
+        
+        ## Requirements
+        - Home Assistant 2023.1.0 or newer
+        - De'Longhi Comfort account with registered devices
+        - Internet connection for cloud API access
+        
+        ## Support
+        For issues, please create a GitHub issue with logs and device information.
+        EOF
+        
+    - name: Create Release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ steps.get_version.outputs.VERSION }}
+        name: De'Longhi Comfort Integration ${{ steps.get_version.outputs.VERSION }}
+        body_path: release_notes.md
+        files: |
+          delonghi_comfort.zip
+          delonghi-comfort-integration-${{ steps.get_version.outputs.VERSION }}.zip
+        draft: false
+        prerelease: false
+        make_latest: true
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Update HACS info
+      run: |
+        echo "Release created successfully!"
+        echo "Integration zip: delonghi_comfort.zip"
+        echo "Complete package: delonghi-comfort-integration-${{ steps.get_version.outputs.VERSION }}.zip"

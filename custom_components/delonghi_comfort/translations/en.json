@@ -1,0 +1,99 @@
+{
+  "config": {
+    "title": "De'Longhi Comfort Integration",
+    "description": "Integration for managing De'Longhi comfort devices.",
+    "step": {
+      "user": {
+        "title": "De'Longhi Comfort",
+        "description": "Enter your De'Longhi account credentials",
+        "data": {
+          "username": "Email",
+          "password": "Password",
+          "language": "Language"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Invalid authentication credentials",
+      "cannot_connect": "Failed to connect to De'Longhi servers",
+      "no_devices": "No devices found on your account",
+      "unknown": "Unexpected error occurred"
+    },
+    "abort": {
+      "already_configured": "Account is already configured"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "De'Longhi Comfort Options",
+        "description": "Configure options for De'Longhi Comfort integration",
+        "data": {
+          "scan_interval": "Update interval (seconds)"
+        }
+      }
+    }
+  },
+  "device": {
+    "name": "De'Longhi Device",
+    "description": "Manage your De'Longhi comfort device."
+  },
+  "entity": {
+    "sensor": {
+      "room_temperature": {
+        "name": "Room temperature"
+      },
+      "target_temperature": {
+        "name": "Target temperature"
+      },
+      "room_humidity": {
+        "name": "Room humidity"
+      },
+      "target_humidity": {
+        "name": "Target humidity"
+      },
+      "device_status": {
+        "name": "Device status"
+      },
+      "device_mode": {
+        "name": "Device mode"
+      },
+      "fan_speed": {
+        "name": "Fan speed"
+      },
+      "filter_hours": {
+        "name": "Filter hours"
+      },
+      "power_consumption": {
+        "name": "Power consumption"
+      },
+      "wifi_signal_strength": {
+        "name": "WiFi signal strength"
+      },
+      "error_code": {
+        "name": "Error code"
+      },
+      "operating_hours": {
+        "name": "Operating hours"
+      }
+    },
+    "number": {
+      "temperature_setpoint": {
+        "name": "Temperature setpoint"
+      },
+      "humidity_setpoint": {
+        "name": "Humidity setpoint"
+      }
+    },
+    "select": {
+      "device_mode": {
+        "name": "Device mode"
+      }
+    },
+    "switch": {
+      "device_power": {
+        "name": "Device power"
+      }
+    }
+  }
+}

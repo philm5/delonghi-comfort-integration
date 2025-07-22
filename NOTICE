@@ -1,0 +1,28 @@
+De'Longhi Comfort Home Assistant Integration
+Copyright 2024-2025 [Your Name]
+
+This product includes software developed by third parties:
+
+1. rtfpessoa/delonghi-comfort-client
+   Copyright (c) rtfpessoa
+   Licensed under the Apache License, Version 2.0
+   Available at: https://github.com/rtfpessoa/delonghi-comfort-client
+
+2. duckwc/ECAMpy
+   Copyright (c) duckwc
+   Available at: https://github.com/duckwc/ECAMpy
+   
+   Portions of the authentication and token conversion code are derived from this project.
+
+The Apache License 2.0 can be found at:
+http://www.apache.org/licenses/LICENSE-2.0
+
+Modifications and additions to the original code:
+- Home Assistant integration framework
+- Configuration flow implementation
+- Coordinator pattern for data updates
+- Entity implementations for climate, sensors, switches, etc.
+- Translation files
+- Documentation and examples
+
+All modifications are licensed under the Apache License 2.0.

@@ -1,0 +1,105 @@
+name: Validate
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install homeassistant voluptuous pyyaml
+        
+    - name: Validate manifest.json
+      run: |
+        python -c "
+        import json
+        import sys
+        
+        # Load and validate manifest
+        with open('custom_components/delonghi_comfort/manifest.json', 'r') as f:
+            manifest = json.load(f)
+            
+        required_fields = ['domain', 'name', 'version', 'requirements', 'codeowners', 'iot_class']
+        
+        for field in required_fields:
+            if field not in manifest:
+                print(f'Missing required field: {field}')
+                sys.exit(1)
+                
+        print('Manifest validation passed!')
+        "
+        
+    - name: Check Python syntax
+      run: |
+        python -m py_compile custom_components/delonghi_comfort/*.py
+        
+    - name: Validate HACS compatibility
+      run: |
+        # Check for required files
+        if [ ! -f "custom_components/delonghi_comfort/__init__.py" ]; then
+          echo "Missing __init__.py"
+          exit 1
+        fi
+        
+        if [ ! -f "custom_components/delonghi_comfort/manifest.json" ]; then
+          echo "Missing manifest.json"
+          exit 1
+        fi
+        
+        if [ ! -f "hacs.json" ]; then
+          echo "Missing hacs.json"
+          exit 1
+        fi
+        
+        echo "HACS validation passed!"
+        
+    - name: Check file structure
+      run: |
+        echo "Checking integration file structure..."
+        
+        # Required files
+        required_files=(
+          "custom_components/delonghi_comfort/__init__.py"
+          "custom_components/delonghi_comfort/manifest.json"
+          "custom_components/delonghi_comfort/config_flow.py"
+          "custom_components/delonghi_comfort/const.py"
+          "README.md"
+          "LICENSE"
+          "NOTICE"
+        )
+        
+        for file in "${required_files[@]}"; do
+          if [ ! -f "$file" ]; then
+            echo "Missing required file: $file"
+            exit 1
+          fi
+        done
+        
+        echo "File structure validation passed!"
+        
+    - name: Lint with basic checks
+      run: |
+        # Check for basic code quality issues
+        find custom_components/delonghi_comfort -name "*.py" -exec python -m py_compile {} \;
+        
+        # Check for common issues
+        if grep -r "print(" custom_components/delonghi_comfort/*.py; then
+          echo "Warning: Found print statements in code (consider using logging instead)"
+        fi
+        
+        echo "Basic linting completed!"
