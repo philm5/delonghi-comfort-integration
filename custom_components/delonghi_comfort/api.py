@@ -389,6 +389,18 @@ class DeLonghiAPI:
             _LOGGER.error("Failed to set status for %s: %s", dsn, e)
             return False
 
+    async def set_silent_mode(self, dsn: str, status: int) -> bool:
+        """Set silent mode (1=ON, 2=OFF)."""
+        try:
+            response = await self._post_request(
+                f"apiv1/dsns/{dsn}/properties/set_silent_function/datapoints.json",
+                {"datapoint": {"value": status}},
+            )
+            return response is not None
+        except Exception as e:
+            _LOGGER.error("Failed to set silent mode for %s: %s", dsn, e)
+            return False
+
     async def set_humidity_setpoint(self, dsn: str, humidity: int) -> bool:
         """Set humidity setpoint (0-100%)."""
         try:

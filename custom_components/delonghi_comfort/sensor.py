@@ -67,6 +67,11 @@ SENSOR_DESCRIPTIONS = (
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
     SensorEntityDescription(
+        key="get_silent_function",
+        translation_key="silent_mode",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    SensorEntityDescription(
         key="filter_hours",
         translation_key="filter_hours",
         device_class=SensorDeviceClass.DURATION,
@@ -172,6 +177,8 @@ class DeLonghiSensor(CoordinatorEntity, SensorEntity):
             return {1: "cooling", 2: "dehumidification", 3: "fan_only"}.get(
                 value, "unknown"
             )
+        if self.entity_description.key == "get_silent_function":
+            return "on" if value == 1 else "off" if value == 0 else "unknown"
 
         return value
 

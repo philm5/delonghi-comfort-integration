@@ -21,6 +21,11 @@ SWITCH_DESCRIPTIONS = (
         translation_key="device_power",
         icon="mdi:power",
     ),
+    SwitchEntityDescription(
+        key="get_silent_function",
+        translation_key="silent_mode",
+        icon="mdi:volume-mute",
+    ),
 )
 
 
@@ -86,21 +91,27 @@ class DeLonghiSwitch(CoordinatorEntity, SwitchEntity):
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the switch on."""
-        success = await self.coordinator.api.set_device_status(self.coordinator.dsn, 1)
+        if self.entity_description.key == "get_device_status":
+            success = await self.coordinator.api.set_device_status(self.coordinator.dsn, 1)
+        elif self.entity_description.key == "get_silent_function":
+            success = await self.coordinator.api.set_silent_mode(self.coordinator.dsn, 1)
 
         if success:
             await self.coordinator.async_request_refresh()
         else:
-            _LOGGER.error("Failed to turn on device %s", self.coordinator.dsn)
+            _LOGGER.error("Failed to change %s to 1", self.entity_description.key)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the switch off."""
-        success = await self.coordinator.api.set_device_status(self.coordinator.dsn, 2)
+        if self.entity_description.key == "get_device_status":
+            success = await self.coordinator.api.set_device_status(self.coordinator.dsn, 2)
+        elif self.entity_description.key == "get_silent_function":
+            success = await self.coordinator.api.set_silent_mode(self.coordinator.dsn, 0)
 
         if success:
             await self.coordinator.async_request_refresh()
         else:
-            _LOGGER.error("Failed to turn off device %s", self.coordinator.dsn)
+            _LOGGER.error("Failed to change %s to 0", self.entity_description.key)
 
     @property
     def available(self) -> bool:
