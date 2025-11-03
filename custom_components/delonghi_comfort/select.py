@@ -45,6 +45,8 @@ async def async_setup_entry(
             ]
         )
 
+    entities.extend([HeaterBrightness(coordinator=coordinator) for coordinator in data["heater_coordinators"]])
+
     async_add_entities(entities)
 
 
@@ -109,3 +111,35 @@ class DeLonghiSelect(CoordinatorEntity, SelectEntity):
         return (
             super().available and self.entity_description.key in self.coordinator.data
         )
+
+class HeaterBrightness(CoordinatorEntity, SelectEntity):
+    """Representation of a heater brightness entity."""
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:brightness-6"
+    _attr_name = "Display brightness"
+
+    _attr_options = ["Level 1", "Level 2", "Level 3"]
+
+    def __init__(self, coordinator) -> None:
+        """Initialize the select entity."""
+        super().__init__(coordinator)
+        self._attr_unique_id = f"delonghi_heater_{coordinator.dsn}_brightness"
+        self._attr_device_info = coordinator.get_device_info()
+
+    @property
+    def current_option(self) -> str | None:
+        """Return the current option."""
+        value = self.coordinator.data.get(f"current_brightness")
+        return None if value is None else self.options[value - 1]
+
+    async def async_select_option(self, option: str) -> None:
+        """Select an option."""
+        value = self.options.index(option) + 1
+        success = await self.coordinator.api.set_device_property(
+            self.coordinator.dsn, f"set_brightness", value
+        )
+
+        if success:
+            await self.coordinator.async_request_refresh()
+        else:
+            _LOGGER.error("Failed to set device brightness to %s", option)

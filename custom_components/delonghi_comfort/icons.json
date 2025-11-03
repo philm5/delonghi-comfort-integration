@@ -1,0 +1,28 @@
+{
+  "entity": {
+    "climate": {
+      "heater": {
+        "state_attributes": {
+          "preset_mode": {
+            "state": {
+              "Day mode": "mdi:weather-sunny",
+              "Night mode": "mdi:weather-night",
+              "Antifrost": "mdi:snowflake-thermometer",
+              "Manual": "mdi:hand-front-left"
+            }
+          },
+          "fan_mode": {
+            "state": {
+              "0%": "mdi:lightbulb-off",
+              "20%": "mdi:lightbulb-on-20",
+              "40%": "mdi:lightbulb-on-40",
+              "60%": "mdi:lightbulb-on-60",
+              "80%": "mdi:lightbulb-on-80",
+              "100%": "mdi:lightbulb-on"
+            }
+          }
+        }
+      }
+    }
+  }
+}

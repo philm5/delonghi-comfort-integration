@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from homeassistant.components.switch import SwitchEntity, SwitchEntityDescription
+from homeassistant.components.switch import SwitchEntity, SwitchEntityDescription, SwitchDeviceClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -28,6 +28,18 @@ SWITCH_DESCRIPTIONS = (
     ),
 )
 
+HEATER_DESCRIPTIONS = (
+    SwitchEntityDescription(
+        key="eco",
+        icon="mdi:sprout",
+        name="Eco",
+    ),
+    SwitchEntityDescription(
+        key="lock",
+        icon="mdi:lock",
+        name="Child lock",
+    ),
+)
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -48,6 +60,17 @@ async def async_setup_entry(
                     description=description,
                 )
                 for description in SWITCH_DESCRIPTIONS
+            ]
+        )
+
+    for coordinator in data["heater_coordinators"]:
+        entities.extend(
+            [
+                HeaterSwitch(
+                    coordinator=coordinator,
+                    description=description,
+                )
+                for description in HEATER_DESCRIPTIONS
             ]
         )
 
@@ -119,3 +142,46 @@ class DeLonghiSwitch(CoordinatorEntity, SwitchEntity):
         return (
             super().available and self.entity_description.key in self.coordinator.data
         )
+
+class HeaterSwitch(CoordinatorEntity, SwitchEntity):
+    """Representation of a De'Longhi heater switch entity."""
+
+    _attr_device_class = SwitchDeviceClass.SWITCH
+    _attr_has_entity_name = True
+
+    def __init__(
+        self,
+        coordinator,
+        description: SwitchEntityDescription,
+    ) -> None:
+        """Initialize the switch entity."""
+        super().__init__(coordinator)
+        self.entity_description = description
+        self._attr_translation_key = description.key
+        self._attr_unique_id = f"delonghi_heater_{coordinator.dsn}_{description.key}"
+        self._attr_device_info = coordinator.get_device_info()
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return True if the switch is on."""
+        value = self.coordinator.data.get(f"get_{self.entity_description.key}")
+        if value is None:
+            return None
+        # Device status: 1 = ON, 0 = OFF
+        return value == 1
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Turn the switch on."""
+        success = await self.coordinator.api.set_device_property(self.coordinator.dsn, f"set_{self.entity_description.key}", 1)
+        if success:
+            await self.coordinator.async_request_refresh()
+        else:
+            _LOGGER.error("Failed to turn on: %s", self.entity_description.key)
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Turn the switch off."""
+        success = await self.coordinator.api.set_device_property(self.coordinator.dsn, f"set_{self.entity_description.key}", 0)
+        if success:
+            await self.coordinator.async_request_refresh()
+        else:
+            _LOGGER.error("Failed to turn off: %s", self.entity_description.key)

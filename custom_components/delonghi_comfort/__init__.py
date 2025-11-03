@@ -50,13 +50,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Create coordinators for each device
     coordinators = []
+    heater_coordinators = []
     for device in devices:
         device_info = device["device"]
         dsn = device_info["dsn"]
 
         coordinator = DeLonghiCoordinator(hass, api, dsn, device_info, entry)
         await coordinator.async_config_entry_first_refresh()
-        coordinators.append(coordinator)
+        if device_info["oem_model"] == "DL-heater":
+            heater_coordinators.append(coordinator)
+        else:
+            coordinators.append(coordinator)
 
     # Store API instance, devices, and coordinators in hass data
     hass.data.setdefault(DOMAIN, {})
@@ -64,6 +68,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "api": api,
         "devices": devices,
         "coordinators": coordinators,
+        "heater_coordinators": heater_coordinators,
     }
 
     # Set up platforms
