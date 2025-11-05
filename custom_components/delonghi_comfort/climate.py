@@ -42,6 +42,8 @@ async def async_setup_entry(
         DeLonghiClimate(coordinator=coordinator) for coordinator in coordinators
     ]
 
+    entities.extend([DeLonghiHeater(coordinator=coordinator) for coordinator in data["heater_coordinators"]])
+
     async_add_entities(entities)
 
 
@@ -226,3 +228,129 @@ class DeLonghiClimate(CoordinatorEntity, ClimateEntity):
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return additional state attributes."""
         return dict(self.coordinator.data)
+
+class DeLonghiHeater(CoordinatorEntity, ClimateEntity):
+    """Representation of a De'Longhi climate device."""
+
+    # Entity - Generic properties
+    _attr_supported_features = (ClimateEntityFeature.TARGET_TEMPERATURE | ClimateEntityFeature.FAN_MODE | ClimateEntityFeature.PRESET_MODE | ClimateEntityFeature.TURN_ON | ClimateEntityFeature.TURN_OFF)
+    _attr_has_entity_name = True
+    _attr_name = None
+    _attr_translation_key = "heater"
+
+    # Entity - Advanced properties
+    _attr_icon = "mdi:radiator"
+
+    # Climate entity - Properties
+    _attr_fan_modes = ["0%", "20%", "40%", "60%", "80%", "100%"]
+    _attr_hvac_modes = [HVACMode.OFF, HVACMode.HEAT]
+    _attr_max_temp = 28
+    _attr_min_temp = 10
+    _attr_preset_modes = ["Day mode", "Night mode", "Antifrost", "Manual"]
+    _attr_target_temperature_step = 0.5
+    _attr_temperature_unit = UnitOfTemperature.CELSIUS
+
+    def __init__(
+        self,
+        coordinator,
+    ) -> None:
+        """Initialize the climate entity."""
+        super().__init__(coordinator)
+        self._dsn = coordinator.dsn
+        self._api = coordinator.api
+
+        self._attr_unique_id = f"delonghi_heater_{self._dsn}"
+        self._attr_device_info = coordinator.get_device_info()
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return additional state attributes."""
+        return dict(self.coordinator.data)
+
+    @property
+    def hvac_mode(self) -> HVACMode:
+        """Return current operation mode."""
+        # Check if device is on/off first
+        status = self.coordinator.data.get("device_status")
+        return HVACMode.HEAT if status == 1 else HVACMode.OFF
+
+    @property
+    def hvac_action(self) -> HVACAction | None:
+        """Return the current running hvac operation."""
+        status = self.coordinator.data.get("device_status")
+        if status == 1:  # ON
+            power_level = self.coordinator.data.get("MDH_Resources")
+            return HVACAction.IDLE if power_level == 0 else HVACAction.HEATING
+        return HVACAction.OFF
+
+    @property
+    def preset_mode(self) -> str | None:
+        """Return the current preset mode."""
+        device_mode = self.coordinator.data.get("device_mode")
+        return self.preset_modes[device_mode-1] if 1 <= device_mode <= 4 else None
+
+    @property
+    def current_temperature(self) -> float | None:
+        """Return the current temperature."""
+        return self.coordinator.data.get("room_temp")
+
+    @property
+    def target_temperature(self) -> float | None:
+        """Return the temperature we try to reach."""
+        return self.coordinator.data.get("temperature_setpoint")
+
+    @property
+    def fan_mode(self) -> str | None:
+        """Return the fan mode."""
+        power_level = self.coordinator.data.get("current_power_level", 0)
+        return self.fan_modes[power_level]
+
+    async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
+        """Set new target hvac mode."""
+        if hvac_mode == HVACMode.OFF:
+            await self.async_turn_off()
+        else:
+            await self.async_turn_on()
+
+    async def async_turn_on(self) -> None:
+        """Turn the entity on."""
+        if await self._api.set_device_property(self._dsn, "set_status", 1):  # 1 = ON
+            await self.coordinator.async_request_refresh()
+        else:
+            _LOGGER.error("Failed to turn on device")
+
+    async def async_turn_off(self) -> None:
+        """Turn the entity off."""
+        if await self._api.set_device_property(self._dsn, "set_status", 2):  # 2 = OFF
+            await self.coordinator.async_request_refresh()
+        else:
+            _LOGGER.error("Failed to turn off device")
+
+    async def async_set_preset_mode(self, preset_mode: str) -> None:
+        """Set new target preset mode."""
+        if preset_mode not in self.preset_modes:
+            _LOGGER.error("Invalid preset mode: %s", preset_mode)
+            return
+        device_mode = self.preset_modes.index(preset_mode) + 1
+        if await self._api.set_device_property(self._dsn, "set_device_mode", device_mode):
+            await self.coordinator.async_request_refresh()
+        else:
+            _LOGGER.error("Failed to set preset mode to %s", preset_mode)
+
+    async def async_set_fan_mode(self, fan_mode: str) -> None:
+        """Set new target fan mode."""
+        power_level = self.fan_modes.index(fan_mode)
+        if await self._api.set_device_property(self._dsn, "set_power_level", power_level):
+            await self.coordinator.async_request_refresh()
+        else:
+            _LOGGER.error("Failed to set fan mode to %s", fan_mode)
+
+    async def async_set_temperature(self, **kwargs: Any) -> None:
+        """Set new target temperature."""
+        temperature = kwargs.get(ATTR_TEMPERATURE)
+        if temperature is None:
+            return
+        if await self._api.set_device_property(self._dsn, "temperature_setpoint", float(temperature)):
+            await self.coordinator.async_request_refresh()
+        else:
+            _LOGGER.error("Failed to set temperature setpoint")

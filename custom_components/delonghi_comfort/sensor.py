@@ -135,6 +135,8 @@ async def async_setup_entry(
             ]
         )
 
+    entities.extend([HeaterTemperature(coordinator=coordinator) for coordinator in data["heater_coordinators"]])
+
     async_add_entities(entities)
 
 
@@ -188,3 +190,23 @@ class DeLonghiSensor(CoordinatorEntity, SensorEntity):
         return (
             super().available and self.entity_description.key in self.coordinator.data
         )
+
+class HeaterTemperature(CoordinatorEntity, SensorEntity):
+    """Representation of a De'Longhi heater temperature sensor."""
+    _attr_has_entity_name = True
+    _attr_device_class = SensorDeviceClass.TEMPERATURE
+    _attr_name = "Temperature"
+
+    _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, coordinator) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+        self._attr_unique_id = f"delonghi_heater_{coordinator.dsn}_temperature"
+        self._attr_device_info = coordinator.get_device_info()
+
+    @property
+    def native_value(self) -> Any:
+        """Return the value of the sensor."""
+        return self.coordinator.data.get("room_temp")

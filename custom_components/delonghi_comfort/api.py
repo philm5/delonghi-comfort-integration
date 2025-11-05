@@ -495,3 +495,15 @@ class DeLonghiAPI:
             return False
         else:
             return response is not None
+
+    async def set_device_property(self, dsn: str, propName: str, value: Any) -> bool:
+        """Set a device property by DSN and property name."""
+        try:
+            response = await self._post_request(
+                f"apiv1/dsns/{dsn}/properties/{propName}/datapoints.json",
+                {"datapoint": {"value": value}},
+            )
+            return response is not None
+        except Exception as e:
+            _LOGGER.error("Failed to set device property: %s, %s, %s: %s", dsn, propName, value, e)
+            return False

@@ -5,10 +5,11 @@ import logging
 from typing import Any
 
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import DeLonghiAPI
-from .const import SCAN_INTERVAL, CONF_SCAN_INTERVAL
+from .const import SCAN_INTERVAL, CONF_SCAN_INTERVAL, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -56,3 +57,14 @@ class DeLonghiCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             raise UpdateFailed(f"Error communicating with API: {err}") from err
         else:
             return data
+
+    def get_device_info(self) -> DeviceInfo:
+        """Return device information for this coordinator."""
+        return DeviceInfo(
+            identifiers={(DOMAIN, self.dsn)},
+            manufacturer="De'Longhi",
+            model=self.data.get("appliance_model"),
+            name=self.device_name,
+            hw_version=self.data.get("hardware_version"),
+            sw_version=f"Fireware MDH:{self.data.get('firmware_version')} / Wi-Fi Module:{self.data.get('mcu_host_version')}",
+        )
