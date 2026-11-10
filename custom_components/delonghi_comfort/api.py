@@ -40,6 +40,7 @@ class DeLonghiAPI:
         self.session = session
         self.access_token = None
         self.refresh_token = None
+        self.auth_failure = None
 
     def get_query_param(self, url: str, param: str) -> str | None:
         """Extract query parameter from URL."""
@@ -53,6 +54,7 @@ class DeLonghiAPI:
 
     async def authenticate(self) -> bool:
         """Authenticate with the De'Longhi API."""
+        self.auth_failure = None
         try:
             self.access_token = await self._get_new_access_token()
             return self.access_token is not None
@@ -175,6 +177,7 @@ class DeLonghiAPI:
                 login_data = json.loads(login_data)
 
             if login_data.get("statusCode") != 200:
+                self.auth_failure = "invalid_auth"
                 _LOGGER.error(
                     "Login failed: %s", login_data.get("errorDetails", "Unknown error")
                 )
@@ -220,9 +223,22 @@ class DeLonghiAPI:
                     "signatureTimestamp": user_signature_timestamp,
                 },
             ) as response:
+                consent_status = response.status
+                consent_content_type = response.headers.get("Content-Type", "")
                 consent_text = await response.text()
 
-            signature = consent_text.split("const consentObj2Sig = '")[1].split("';")[0]
+            signature_marker = "const consentObj2Sig = '"
+            if signature_marker not in consent_text:
+                self.auth_failure = "cannot_connect"
+                _LOGGER.error(
+                    "Consent page missing expected signature (HTTP %s, content type %s, body length %s)",
+                    consent_status,
+                    consent_content_type,
+                    len(consent_text),
+                )
+                return None
+
+            signature = consent_text.split(signature_marker, 1)[1].split("';", 1)[0]
 
             # Step 6: Authorization
             async with self.session.get(
@@ -284,6 +300,7 @@ class DeLonghiAPI:
             return ayla_data["access_token"]
 
         except Exception as e:
+            self.auth_failure = "cannot_connect"
             _LOGGER.error("Failed to get access token: %s", e)
             return None
 

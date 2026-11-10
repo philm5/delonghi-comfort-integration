@@ -61,7 +61,11 @@ class DelonghiComfortConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     else:
                         errors["base"] = "no_devices"
                 else:
-                    errors["base"] = "invalid_auth"
+                    errors["base"] = (
+                        "invalid_auth"
+                        if api.auth_failure == "invalid_auth"
+                        else "cannot_connect"
+                    )
             except Exception as e:
                 _LOGGER.error("Unexpected error during authentication: %s", e)
                 errors["base"] = "cannot_connect"
