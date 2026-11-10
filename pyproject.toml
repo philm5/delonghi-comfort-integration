@@ -1,0 +1,30 @@
+[project]
+name = "delonghi-comfort-integration"
+version = "1.1.0"
+description = "Development environment for the De'Longhi Comfort Home Assistant integration"
+requires-python = ">=3.14.2,<3.15"
+dependencies = [
+    "homeassistant==2026.11.1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest==9.2.0",
+    "pytest-asyncio==1.4.1.post1",
+]
+
+[tool.uv]
+package = false
+default-groups = ["dev"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+asyncio_default_fixture_loop_scope = "function"
+filterwarnings = [
+    "error",
+    # Core 2026.11.1 subclasses aiohttp's Application; revisit on Core upgrades.
+    'ignore:^Inheritance class HomeAssistantApplication from web\.Application is discouraged$:DeprecationWarning:homeassistant\.components\.http\.server$',
+    # aiogithubapi uses backoff 2.2.1's deprecated asyncio helper on Python 3.14.
+    '''ignore:^'asyncio\.iscoroutinefunction' is deprecated and slated for removal in Python 3\.16; use inspect\.iscoroutinefunction\(\) instead$:DeprecationWarning:backoff\.(_async|_decorator)$''',
+]

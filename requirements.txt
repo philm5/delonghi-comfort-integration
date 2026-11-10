@@ -1,5 +1,0 @@
-aiohttp
-requests>=2.31.0
-homeassistant>=2023.1.0
-homeassistant
-pyyaml

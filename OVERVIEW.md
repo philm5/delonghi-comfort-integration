@@ -1,14 +1,15 @@
 # OVERVIEW
 
 ## Purpose
-Home Assistant custom integration (HACS-compatible) that connects De'Longhi Comfort air conditioners, heaters, and dehumidifiers to Home Assistant via the De'Longhi cloud API.
+Home Assistant custom integration (Marketplace-compatible) that connects De'Longhi Comfort air conditioners, heaters, and dehumidifiers to Home Assistant via the De'Longhi cloud API.
 
 ## Stack
-- **Python 3 / asyncio** under the Home Assistant custom component framework (`homeassistant>=2023.1.0`)
+- **Python 3.14 / asyncio** under the Home Assistant custom component framework (Core 2026.11.1 / Python >=3.14.2)
 - **aiohttp** for all async HTTP — HA's `async_get_clientsession` used at runtime
 - **Gigya OIDC + Ayla Networks** — two-vendor cloud auth chain; 8 sequential HTTP steps to obtain a usable `access_token`. Niche, undocumented externally.
-- **HACS** distribution — no PyPI package, no build system
-- Dev environment: Docker Compose (`docker-compose.yml`) running `ghcr.io/home-assistant/home-assistant:stable` with `custom_components/` bind-mounted
+- **Home Assistant Marketplace** distribution (`hacs.json` remains the repository manifest) — no PyPI package, no build system
+- Local Python environment: `uv sync` creates `.venv` from `pyproject.toml` and `uv.lock`; `uv run pytest` runs the suite.
+- Dev appliance environment: `uv run scripts/ha_dev.py up` starts Docker Compose (`docker-compose.yml`) running `ghcr.io/home-assistant/home-assistant:2026.11.1` with `custom_components/` bind-mounted read-only. VS Code's `Home Assistant: Docker debug` target starts and attaches automatically. State is isolated in ignored `ha-debug-config/`; `dev/configuration.yaml` enables debugpy with startup waiting and localhost-published ports 8123/5678.
 
 ## Architecture
 Standard HA custom component layout under `custom_components/delonghi_comfort/`:
@@ -32,7 +33,7 @@ Standard HA custom component layout under `custom_components/delonghi_comfort/`:
 2. **HA platform contracts** — each platform has strict interface requirements; wrong property types or missing attributes cause silent failures, not exceptions
 3. **Dehumidifier property naming** diverges significantly from A/C — different property names, `÷10` temperature scaling, bitmask alarm state. Documented in `oem_model/DL-dehumidifier.md`.
 
-No tests. No type-checking toolchain. Regressions are invisible until runtime.
+Regression tests run against Core 2026.11.1 on Python 3.14. CI also runs hassfest and Marketplace repository validation. No type-checking toolchain.
 
 ## Key Files
 1. `custom_components/delonghi_comfort/api.py` — auth flow and all device I/O
@@ -45,4 +46,4 @@ No tests. No type-checking toolchain. Regressions are invisible until runtime.
 - Requires solid knowledge of the **HA integration development pattern** (`ConfigEntry`, `DataUpdateCoordinator`, `CoordinatorEntity`, platform setup, translation file conventions). Models without HA-specific training produce plausible-looking but broken code.
 - The Gigya + Ayla auth chain is niche — changes require reading existing code, not web lookup.
 - The dehumidifier device type has a fully documented API in `oem_model/DL-dehumidifier.md`; read it before touching dehumidifier entities.
-- No test suite — prefer models that reason carefully about async HA lifecycle and flag missing coverage.
+- Run `uv run pytest` after changes. API responses are mocked; live appliance behavior remains a separate check.

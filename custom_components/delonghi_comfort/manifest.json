@@ -1,16 +1,18 @@
 {
   "domain": "delonghi_comfort",
   "name": "De'Longhi Comfort",
-  "version": "1.0.0",
-  "documentation": "https://github.com/philm5/delonghi-comfort-integration",
-  "requirements": [
-    "requests>=2.31.0"
+  "categories": [
+    "climate"
   ],
-  "dependencies": [],
   "codeowners": [
-    "@philm5"
+    "@filmackay"
   ],
   "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/filmackay/delonghi-comfort-integration",
+  "integration_type": "hub",
   "iot_class": "cloud_polling",
-  "homeassistant": "2023.1.0"
+  "issue_tracker": "https://github.com/filmackay/delonghi-comfort-integration/issues",
+  "requirements": [],
+  "version": "1.1.0"
 }

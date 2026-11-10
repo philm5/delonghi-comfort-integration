@@ -1,0 +1,21 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "HA: start debug container",
+      "type": "process",
+      "command": "uv",
+      "args": ["run", "scripts/ha_dev.py", "up"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "HA: stop debug container",
+      "type": "process",
+      "command": "uv",
+      "args": ["run", "scripts/ha_dev.py", "down"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    }
+  ]
+}

@@ -1,12 +1,15 @@
 # /// script
-# requires-python = ">=3.13"
-# dependencies = ["aiohttp"]
+# requires-python = ">=3.14.2,<3.15"
+# dependencies = ["homeassistant==2026.11.1"]
 # ///
 """
 Dump raw De'Longhi API responses for device discovery.
 
 Usage:
     DELONGHI_USERNAME=you@email.com DELONGHI_PASSWORD=secret uv run discover.py
+
+Run from the repository root. uv uses the inline script dependencies rather
+than the project's .venv or uv.lock.
 
 Output is written to stdout (pipe to a file to save):
     ... | tee discovery_output.json

@@ -128,7 +128,7 @@ async def test_auth_failure_starts_reauth(hass, entry, missing_token):
         await coordinator.async_refresh()
     assert isinstance(coordinator.last_exception, ConfigEntryAuthFailed)
     assert not coordinator.last_update_success
-    reauth.assert_called_once_with(hass)
+    reauth.assert_called_once_with(hass, None, None)
 
 
 async def test_setup_does_not_load_platforms_after_auth_failure(hass, entry):

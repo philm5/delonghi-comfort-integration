@@ -1,12 +1,13 @@
 services:
   homeassistant:
-    image: ghcr.io/home-assistant/home-assistant:stable
-    container_name: ha-dev
+    image: ghcr.io/home-assistant/home-assistant:2026.11.1
     volumes:
-      - ./ha-config:/config
-      - ./custom_components:/config/custom_components
+      - ./ha-debug-config:/config
+      - ./dev/configuration.yaml:/config/configuration.yaml:ro
+      - ./custom_components:/config/custom_components:ro
     ports:
-      - "8123:8123"
+      - "127.0.0.1:8123:8123"
+      - "127.0.0.1:5678:5678"
     environment:
       - TZ=Australia/Sydney
-    restart: unless-stopped
+    restart: "no"

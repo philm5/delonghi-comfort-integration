@@ -1,0 +1,32 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Home Assistant: Docker debug",
+      "type": "debugpy",
+      "request": "attach",
+      "connect": { "host": "127.0.0.1", "port": 5678 },
+      "pathMappings": [
+        {
+          "localRoot": "${workspaceFolder}/custom_components",
+          "remoteRoot": "/config/custom_components"
+        }
+      ],
+      "justMyCode": false,
+      "preLaunchTask": "HA: start debug container"
+    },
+    {
+      "name": "Home Assistant: Attach to running Docker",
+      "type": "debugpy",
+      "request": "attach",
+      "connect": { "host": "127.0.0.1", "port": 5678 },
+      "pathMappings": [
+        {
+          "localRoot": "${workspaceFolder}/custom_components",
+          "remoteRoot": "/config/custom_components"
+        }
+      ],
+      "justMyCode": false
+    }
+  ]
+}

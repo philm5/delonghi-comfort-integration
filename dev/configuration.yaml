@@ -1,0 +1,13 @@
+# Development only. Persistent state lives in the ignored ha-debug-config/.
+default_config:
+
+debugpy:
+  host: 0.0.0.0
+  port: 5678
+  start: true
+  wait: true
+
+logger:
+  default: warning
+  logs:
+    custom_components.delonghi_comfort: debug

@@ -12,11 +12,12 @@ from homeassistant.components.humidifier import (
     HumidifierEntityFeature,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
+from .coordinator import DeLonghiCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -48,7 +49,8 @@ async def async_setup_entry(
     )
 
 
-class DeLonghiDehumidifier(CoordinatorEntity, HumidifierEntity):
+# HA combines CoordinatorEntity's dynamic availability with Entity's cached descriptor.
+class DeLonghiDehumidifier(CoordinatorEntity[DeLonghiCoordinator], HumidifierEntity):  # pyright: ignore[reportIncompatibleVariableOverride]
     """De'Longhi dehumidifier."""
 
     entity_description = DEHUMIDIFIER_ENTITY_DESCRIPTION
@@ -60,28 +62,29 @@ class DeLonghiDehumidifier(CoordinatorEntity, HumidifierEntity):
     _attr_min_humidity = 30
     _attr_max_humidity = 80
 
-    def __init__(self, coordinator) -> None:
+    def __init__(self, coordinator: DeLonghiCoordinator) -> None:
         super().__init__(coordinator)
         self._attr_unique_id = f"delonghi_dehumidifier_{coordinator.dsn}"
         self._attr_device_info = coordinator.get_device_info()
+        self._update_attributes()
 
-    @property
-    def is_on(self) -> bool | None:
-        """Return True only when device is actively running."""
-        return self.coordinator.data.get("device_status") == 1
+    @callback
+    def _update_attributes(self) -> None:
+        """Populate HA's backing attributes and invalidate their cached values."""
+        data = self.coordinator.data
+        self._attr_is_on = data.get("device_status") == 1
+        self._attr_current_humidity = data.get("current_humidity")
+        self._attr_target_humidity = data.get("humidity_setpoint")
+        mode = data.get("device_mode")
+        self._attr_mode = (
+            DEVICE_MODE_TO_DEHUMIDIFIER.get(mode) if isinstance(mode, int) else None
+        )
 
-    @property
-    def current_humidity(self) -> float | None:
-        return self.coordinator.data.get("current_humidity")
-
-    @property
-    def target_humidity(self) -> float | None:
-        return self.coordinator.data.get("humidity_setpoint")
-
-    @property
-    def mode(self) -> str | None:
-        value = self.coordinator.data.get("device_mode")
-        return DEVICE_MODE_TO_DEHUMIDIFIER.get(value)
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Refresh the attributes before Home Assistant writes the new state."""
+        self._update_attributes()
+        super()._handle_coordinator_update()
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         if await self.coordinator.api.set_device_property(
