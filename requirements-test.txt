@@ -1,0 +1,4 @@
+# Home Assistant 2026.2 uses Python 3.13 or later.
+homeassistant==2026.2.3
+pytest>=8,<10
+pytest-asyncio>=1,<2

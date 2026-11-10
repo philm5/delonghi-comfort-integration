@@ -11,6 +11,13 @@
           "password": "Password",
           "language": "Language"
         }
+      },
+      "reauth_confirm": {
+        "title": "Reconnect De'Longhi Comfort",
+        "description": "Enter the current password for {username}.",
+        "data": {
+          "password": "Password"
+        }
       }
     },
     "error": {
@@ -20,7 +27,9 @@
       "unknown": "Unexpected error occurred"
     },
     "abort": {
-      "already_configured": "Account is already configured"
+      "already_configured": "Account is already configured",
+      "reauth_successful": "Account reconnected successfully",
+      "unknown": "The configuration entry is no longer available"
     }
   },
   "options": {

@@ -153,6 +153,18 @@ Contributions are welcome! Please feel free to submit a Pull Request. For major 
 4. Test thoroughly
 5. Submit a pull request
 
+### Regression Tests
+
+Use Python 3.13 to run the recovery tests with an isolated Home Assistant instance:
+
+```bash
+python3.13 -m venv .venv
+.venv/bin/python -m pip install -r requirements-test.txt
+.venv/bin/python -m pytest
+```
+
+The tests mock API responses and never use a real account or appliance.
+
 ### Automated Workflows
 
 This repository includes GitHub Actions for quality assurance and release management:
@@ -160,6 +172,7 @@ This repository includes GitHub Actions for quality assurance and release manage
 #### 🔍 Validation Workflow
 - **Triggers**: Runs on every push to main/master and on pull requests
 - **Validates**: 
+  - Credential recovery, API failures, and unavailable-state regression tests
   - Python syntax and compilation
   - Home Assistant manifest.json structure
   - HACS compatibility requirements

@@ -287,7 +287,7 @@ class DeLonghiHeater(CoordinatorEntity, ClimateEntity):
     def preset_mode(self) -> str | None:
         """Return the current preset mode."""
         device_mode = self.coordinator.data.get("device_mode")
-        return self.preset_modes[device_mode-1] if 1 <= device_mode <= 4 else None
+        return self.preset_modes[device_mode-1] if device_mode in (1, 2, 3, 4) else None
 
     @property
     def current_temperature(self) -> float | None:

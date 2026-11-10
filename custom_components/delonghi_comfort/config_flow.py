@@ -1,19 +1,23 @@
+"""Configuration and credential recovery for De'Longhi Comfort."""
+
+import logging
+
 import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-import logging
 
-from .const import (
-    DOMAIN,
-    CONF_USERNAME,
-    CONF_PASSWORD,
-    CONF_LANGUAGE,
-    LANGUAGES,
-    DEFAULT_LANGUAGE,
-    CONF_SCAN_INTERVAL,
-)
 from .api import DeLonghiAPI
+from .const import (
+    CONF_LANGUAGE,
+    CONF_PASSWORD,
+    CONF_SCAN_INTERVAL,
+    CONF_USERNAME,
+    DEFAULT_LANGUAGE,
+    DOMAIN,
+    LANGUAGES,
+)
+from .exceptions import DeLonghiAuthError, DeLonghiConnectionError
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -28,6 +32,7 @@ class DelonghiComfortConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._username = None
         self._password = None
         self._language = None
+        self._reauth_entry = None
 
     async def async_step_user(self, user_input=None):
         """Handle the initial step."""
@@ -38,35 +43,77 @@ class DelonghiComfortConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._password = user_input[CONF_PASSWORD]
             self._language = user_input.get(CONF_LANGUAGE, DEFAULT_LANGUAGE)
 
-            # Test the credentials
-            session = async_get_clientsession(self.hass)
-            api = DeLonghiAPI(self._username, self._password, session, self._language)
-            try:
-                if await api.authenticate():
-                    devices = await api.get_devices()
-                    if devices:
-                        # Create a unique ID based on username
-                        await self.async_set_unique_id(self._username)
-                        self._abort_if_unique_id_configured()
-
-                        return self.async_create_entry(
-                            title=f"De'Longhi Comfort ({self._username})",
-                            data={
-                                CONF_USERNAME: self._username,
-                                CONF_PASSWORD: self._password,
-                                CONF_LANGUAGE: self._language,
-                            },
-                        )
-                    else:
-                        errors["base"] = "no_devices"
-                else:
-                    errors["base"] = "invalid_auth"
-            except Exception as e:
-                _LOGGER.error("Unexpected error during authentication: %s", e)
-                errors["base"] = "cannot_connect"
+            error = await self._validate_credentials(
+                self._username, self._password, self._language
+            )
+            if error:
+                errors["base"] = error
+            else:
+                await self.async_set_unique_id(self._username)
+                self._abort_if_unique_id_configured()
+                return self.async_create_entry(
+                    title=f"De'Longhi Comfort ({self._username})",
+                    data={
+                        CONF_USERNAME: self._username,
+                        CONF_PASSWORD: self._password,
+                        CONF_LANGUAGE: self._language,
+                    },
+                )
 
         return self.async_show_form(
             step_id="user", data_schema=self._get_schema(), errors=errors
+        )
+
+    async def _validate_credentials(self, username, password, language):
+        """Validate credentials without changing an existing config entry."""
+        api = DeLonghiAPI(
+            username, password, async_get_clientsession(self.hass), language
+        )
+        try:
+            await api.authenticate()
+            devices = await api.get_devices()
+        except DeLonghiAuthError:
+            return "invalid_auth"
+        except DeLonghiConnectionError:
+            return "cannot_connect"
+        except Exception:
+            _LOGGER.exception("Unexpected error validating De'Longhi credentials")
+            return "unknown"
+        return None if devices else "no_devices"
+
+    async def async_step_reauth(self, entry_data):
+        """Start credential recovery for the existing account."""
+        self._reauth_entry = self.hass.config_entries.async_get_entry(
+            self.context["entry_id"]
+        )
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(self, user_input=None):
+        """Validate a replacement password, then reload the same entry."""
+        entry = self._reauth_entry
+        if entry is None:
+            return self.async_abort(reason="unknown")
+
+        errors = {}
+        if user_input is not None:
+            error = await self._validate_credentials(
+                entry.data[CONF_USERNAME],
+                user_input[CONF_PASSWORD],
+                entry.data.get(CONF_LANGUAGE, DEFAULT_LANGUAGE),
+            )
+            if error:
+                errors["base"] = error
+            else:
+                return self.async_update_reload_and_abort(
+                    entry,
+                    data={**entry.data, CONF_PASSWORD: user_input[CONF_PASSWORD]},
+                )
+
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            data_schema=vol.Schema({vol.Required(CONF_PASSWORD): str}),
+            description_placeholders={"username": entry.data[CONF_USERNAME]},
+            errors=errors,
         )
 
     @callback
