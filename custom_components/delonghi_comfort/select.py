@@ -6,13 +6,14 @@ import logging
 
 from homeassistant.components.select import SelectEntity, SelectEntityDescription
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
 from .coordinator import DeLonghiCoordinator
-from .entity import DeLonghiEntity
+from .entity import DeLonghiEntity, async_handle_command_errors
 from .humidifier import DEVICE_MODE_TO_DEHUMIDIFIER, DEHUMIDIFIER_TO_DEVICE_MODE
 
 _LOGGER = logging.getLogger(__name__)
@@ -91,6 +92,7 @@ class DeLonghiSelect(DeLonghiEntity, SelectEntity):
         mode_map = {1: "cooling", 2: "dehumidification", 3: "fan_only"}
         return mode_map.get(value)
 
+    @async_handle_command_errors
     async def async_select_option(self, option: str) -> None:
         """Select an option."""
         # Convert option to device mode value
@@ -98,8 +100,7 @@ class DeLonghiSelect(DeLonghiEntity, SelectEntity):
 
         device_mode = option_map.get(option)
         if device_mode is None:
-            _LOGGER.error("Unknown option: %s", option)
-            return
+            raise ServiceValidationError("Unknown option: %s" % (option,))
 
         success = await self.coordinator.api.set_device_mode(
             self.coordinator.dsn, device_mode
@@ -108,7 +109,7 @@ class DeLonghiSelect(DeLonghiEntity, SelectEntity):
         if success:
             await self.coordinator.async_request_refresh()
         else:
-            _LOGGER.error("Failed to set device mode to %s", option)
+            raise HomeAssistantError("Failed to set device mode to %s" % (option,))
 
     @property
     def available(self) -> bool:  # pyright: ignore[reportIncompatibleVariableOverride]
@@ -144,6 +145,7 @@ class HeaterBrightness(DeLonghiEntity, SelectEntity):  # pyright: ignore[reportI
             return None
         return self.options[value - 1]
 
+    @async_handle_command_errors
     async def async_select_option(self, option: str) -> None:
         """Select an option."""
         value = self.options.index(option) + 1
@@ -154,7 +156,7 @@ class HeaterBrightness(DeLonghiEntity, SelectEntity):  # pyright: ignore[reportI
         if success:
             await self.coordinator.async_request_refresh()
         else:
-            _LOGGER.error("Failed to set device brightness to %s", option)
+            raise HomeAssistantError("Failed to set device brightness to %s" % (option,))
 
     def _update_attributes(self) -> None:
         """Refresh HA backing attributes from the coordinator snapshot."""
@@ -178,18 +180,18 @@ class DehumidifierModeSelect(DeLonghiEntity, SelectEntity):
         value = self.coordinator.data.get("device_mode")
         return DEVICE_MODE_TO_DEHUMIDIFIER.get(value) if isinstance(value, int) else None
 
+    @async_handle_command_errors
     async def async_select_option(self, option: str) -> None:
         value = DEHUMIDIFIER_TO_DEVICE_MODE.get(option)
         if value is None:
-            _LOGGER.error("Unknown dehumidifier mode: %s", option)
-            return
+            raise ServiceValidationError("Unknown dehumidifier mode: %s" % (option,))
         success = await self.coordinator.api.set_device_property(
             self.coordinator.dsn, "device_mode", value
         )
         if success:
             await self.coordinator.async_request_refresh()
         else:
-            _LOGGER.error("Failed to set dehumidifier mode to %s", option)
+            raise HomeAssistantError("Failed to set dehumidifier mode to %s" % (option,))
 
     @property
     def available(self) -> bool:  # pyright: ignore[reportIncompatibleVariableOverride]

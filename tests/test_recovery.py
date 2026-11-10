@@ -171,3 +171,30 @@ async def test_setup_loads_unavailable_entities_on_connection_failure(hass, entr
     assert coordinator.data == {}
     assert not coordinator.last_update_success
     forward.assert_awaited_once()
+
+
+@pytest.mark.parametrize("failure", [DeLonghiConnectionError("offline"), DeLonghiAuthError("rejected"), None])
+async def test_startup_failure_is_handed_to_ha(hass, entry, failure):
+    from homeassistant.exceptions import ConfigEntryNotReady
+
+    api = MagicMock(spec=DeLonghiAPI)
+    api.authenticate = AsyncMock(side_effect=failure)
+    api.get_devices = AsyncMock(return_value=[])
+    expected = ConfigEntryAuthFailed if isinstance(failure, DeLonghiAuthError) else ConfigEntryNotReady
+    with patch("custom_components.delonghi_comfort.DeLonghiAPI", return_value=api):
+        with pytest.raises(expected):
+            await async_setup_entry(hass, entry)
+    api.authenticate.assert_awaited_once()
+    assert entry.entry_id not in hass.data.get(DOMAIN, {})
+
+
+async def test_login_diagnostics_identify_stage_without_secrets(hass, caplog):
+    flow = DelonghiComfortConfigFlow()
+    flow.hass = hass
+    api = MagicMock(spec=DeLonghiAPI)
+    api.authenticate = AsyncMock(side_effect=DeLonghiConnectionError("Authentication failed during OIDC consent: TimeoutError"))
+    with patch("custom_components.delonghi_comfort.config_flow.DeLonghiAPI", return_value=api):
+        assert await flow._validate_credentials("private-email", "private-password", "en") == "cannot_connect"
+    assert "OIDC consent" in caplog.text
+    assert "private-email" not in caplog.text
+    assert "private-password" not in caplog.text

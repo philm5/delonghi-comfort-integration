@@ -7,13 +7,14 @@ from typing import Any
 
 from homeassistant.components.switch import SwitchEntity, SwitchEntityDescription, SwitchDeviceClass
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
 from .coordinator import DeLonghiCoordinator
-from .entity import DeLonghiEntity
+from .entity import DeLonghiEntity, async_handle_command_errors
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -122,6 +123,7 @@ class DeLonghiSwitch(DeLonghiEntity, SwitchEntity):
         # Device status: 1 = ON, 2 = OFF
         return value == 1
 
+    @async_handle_command_errors
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the switch on."""
         if self.entity_description.key == "get_device_status":
@@ -129,14 +131,14 @@ class DeLonghiSwitch(DeLonghiEntity, SwitchEntity):
         elif self.entity_description.key == "get_silent_function":
             success = await self.coordinator.api.set_silent_mode(self.coordinator.dsn, 1)
         else:
-            _LOGGER.error("Unknown switch: %s", self.entity_description.key)
-            return
+            raise ServiceValidationError("Unknown switch: %s" % (self.entity_description.key,))
 
         if success:
             await self.coordinator.async_request_refresh()
         else:
-            _LOGGER.error("Failed to change %s to 1", self.entity_description.key)
+            raise HomeAssistantError("Failed to change %s to 1" % (self.entity_description.key,))
 
+    @async_handle_command_errors
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the switch off."""
         if self.entity_description.key == "get_device_status":
@@ -144,13 +146,12 @@ class DeLonghiSwitch(DeLonghiEntity, SwitchEntity):
         elif self.entity_description.key == "get_silent_function":
             success = await self.coordinator.api.set_silent_mode(self.coordinator.dsn, 0)
         else:
-            _LOGGER.error("Unknown switch: %s", self.entity_description.key)
-            return
+            raise ServiceValidationError("Unknown switch: %s" % (self.entity_description.key,))
 
         if success:
             await self.coordinator.async_request_refresh()
         else:
-            _LOGGER.error("Failed to change %s to 0", self.entity_description.key)
+            raise HomeAssistantError("Failed to change %s to 0" % (self.entity_description.key,))
 
     @property
     def available(self) -> bool:  # pyright: ignore[reportIncompatibleVariableOverride]
@@ -190,21 +191,23 @@ class HeaterSwitch(DeLonghiEntity, SwitchEntity):  # pyright: ignore[reportIncom
         # Device status: 1 = ON, 0 = OFF
         return value == 1
 
+    @async_handle_command_errors
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the switch on."""
         success = await self.coordinator.api.set_device_property(self.coordinator.dsn, f"set_{self.entity_description.key}", 1)
         if success:
             await self.coordinator.async_request_refresh()
         else:
-            _LOGGER.error("Failed to turn on: %s", self.entity_description.key)
+            raise HomeAssistantError("Failed to turn on: %s" % (self.entity_description.key,))
 
+    @async_handle_command_errors
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the switch off."""
         success = await self.coordinator.api.set_device_property(self.coordinator.dsn, f"set_{self.entity_description.key}", 0)
         if success:
             await self.coordinator.async_request_refresh()
         else:
-            _LOGGER.error("Failed to turn off: %s", self.entity_description.key)
+            raise HomeAssistantError("Failed to turn off: %s" % (self.entity_description.key,))
 
     def _update_attributes(self) -> None:
         """Refresh HA backing attributes from the coordinator snapshot."""
@@ -231,6 +234,7 @@ class DehumidifierSwitch(DeLonghiEntity, SwitchEntity):
             return None
         return value == 1
 
+    @async_handle_command_errors
     async def async_turn_on(self, **kwargs: Any) -> None:
         success = await self.coordinator.api.set_device_property(
             self.coordinator.dsn, self.entity_description.key, 1
@@ -238,8 +242,9 @@ class DehumidifierSwitch(DeLonghiEntity, SwitchEntity):
         if success:
             await self.coordinator.async_request_refresh()
         else:
-            _LOGGER.error("Failed to turn on %s", self.entity_description.key)
+            raise HomeAssistantError("Failed to turn on %s" % (self.entity_description.key,))
 
+    @async_handle_command_errors
     async def async_turn_off(self, **kwargs: Any) -> None:
         success = await self.coordinator.api.set_device_property(
             self.coordinator.dsn, self.entity_description.key, 0
@@ -247,7 +252,7 @@ class DehumidifierSwitch(DeLonghiEntity, SwitchEntity):
         if success:
             await self.coordinator.async_request_refresh()
         else:
-            _LOGGER.error("Failed to turn off %s", self.entity_description.key)
+            raise HomeAssistantError("Failed to turn off %s" % (self.entity_description.key,))
 
     @property
     def available(self) -> bool:  # pyright: ignore[reportIncompatibleVariableOverride]

@@ -10,6 +10,7 @@ from homeassistant.components.climate import (
     HVACAction,
 )
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.const import ATTR_TEMPERATURE, UnitOfTemperature
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
@@ -17,7 +18,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
 from .coordinator import DeLonghiCoordinator
-from .entity import DeLonghiEntity
+from .entity import DeLonghiEntity, async_handle_command_errors
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -161,6 +162,7 @@ class DeLonghiClimate(DeLonghiEntity, ClimateEntity):
             return fan_speed_map.get(fan_speed, "auto")
         return "auto"
 
+    @async_handle_command_errors
     async def async_set_temperature(self, **kwargs: Any) -> None:
         """Set new target temperature."""
         temperature = kwargs.get(ATTR_TEMPERATURE)
@@ -170,8 +172,9 @@ class DeLonghiClimate(DeLonghiEntity, ClimateEntity):
         if await self._api.set_temperature_setpoint(self._dsn, float(temperature)):
             await self.coordinator.async_request_refresh()
         else:
-            _LOGGER.error("Failed to set temperature setpoint")
+            raise HomeAssistantError("Failed to set temperature setpoint")
 
+    @async_handle_command_errors
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """Set new target hvac mode."""
         if hvac_mode == HVACMode.OFF:
@@ -179,22 +182,22 @@ class DeLonghiClimate(DeLonghiEntity, ClimateEntity):
             if await self._api.set_device_status(self._dsn, 2):  # 2 = OFF
                 await self.coordinator.async_request_refresh()
             else:
-                _LOGGER.error("Failed to turn off device")
+                raise HomeAssistantError("Failed to turn off device")
         else:
             # First turn on the device if it's off
             current_status = self.coordinator.data.get("get_device_status")
             if current_status == 2:  # Device is off
                 if not await self._api.set_device_status(self._dsn, 1):  # 1 = ON
-                    _LOGGER.error("Failed to turn on device")
-                    return
+                    raise HomeAssistantError("Failed to turn on device")
 
             # Set the mode
             device_mode = HVAC_MODE_TO_DEVICE.get(hvac_mode)
             if device_mode and await self._api.set_device_mode(self._dsn, device_mode):
                 await self.coordinator.async_request_refresh()
             else:
-                _LOGGER.error("Failed to set HVAC mode")
+                raise HomeAssistantError("Failed to set HVAC mode")
 
+    @async_handle_command_errors
     async def async_set_fan_mode(self, fan_mode: str) -> None:
         """Set new target fan mode."""
         # Map fan mode names to device values
@@ -203,27 +206,28 @@ class DeLonghiClimate(DeLonghiEntity, ClimateEntity):
 
         fan_speed = fan_mode_map.get(fan_mode)
         if fan_speed is None:
-            _LOGGER.error("Invalid fan mode: %s", fan_mode)
-            return
+            raise ServiceValidationError("Invalid fan mode: %s" % (fan_mode,))
 
         if await self._api.set_fan_speed(self._dsn, fan_speed):
             await self.coordinator.async_request_refresh()
         else:
-            _LOGGER.error("Failed to set fan mode to %s", fan_mode)
+            raise HomeAssistantError("Failed to set fan mode to %s" % (fan_mode,))
 
+    @async_handle_command_errors
     async def async_turn_on(self) -> None:
         """Turn the entity on."""
         if await self._api.set_device_status(self._dsn, 1):  # 1 = ON
             await self.coordinator.async_request_refresh()
         else:
-            _LOGGER.error("Failed to turn on device")
+            raise HomeAssistantError("Failed to turn on device")
 
+    @async_handle_command_errors
     async def async_turn_off(self) -> None:
         """Turn the entity off."""
         if await self._api.set_device_status(self._dsn, 2):  # 2 = OFF
             await self.coordinator.async_request_refresh()
         else:
-            _LOGGER.error("Failed to turn off device")
+            raise HomeAssistantError("Failed to turn off device")
 
     def _read_extra_state_attributes(self) -> dict[str, Any]:
         """Return additional state attributes."""
@@ -312,6 +316,7 @@ class DeLonghiHeater(DeLonghiEntity, ClimateEntity):  # pyright: ignore[reportIn
             return None
         return HEATER_FAN_MODES[power_level]
 
+    @async_handle_command_errors
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """Set new target hvac mode."""
         if hvac_mode == HVACMode.OFF:
@@ -319,42 +324,45 @@ class DeLonghiHeater(DeLonghiEntity, ClimateEntity):  # pyright: ignore[reportIn
         else:
             await self.async_turn_on()
 
+    @async_handle_command_errors
     async def async_turn_on(self) -> None:
         """Turn the entity on."""
         if await self._api.set_device_property(self._dsn, "set_status", 1):  # 1 = ON
             await self.coordinator.async_request_refresh()
         else:
-            _LOGGER.error("Failed to turn on device")
+            raise HomeAssistantError("Failed to turn on device")
 
+    @async_handle_command_errors
     async def async_turn_off(self) -> None:
         """Turn the entity off."""
         if await self._api.set_device_property(self._dsn, "set_status", 2):  # 2 = OFF
             await self.coordinator.async_request_refresh()
         else:
-            _LOGGER.error("Failed to turn off device")
+            raise HomeAssistantError("Failed to turn off device")
 
+    @async_handle_command_errors
     async def async_set_preset_mode(self, preset_mode: str) -> None:
         """Set new target preset mode."""
         if preset_mode not in HEATER_PRESET_MODES:
-            _LOGGER.error("Invalid preset mode: %s", preset_mode)
-            return
+            raise ServiceValidationError("Invalid preset mode: %s" % (preset_mode,))
         device_mode = HEATER_PRESET_MODES.index(preset_mode) + 1
         if await self._api.set_device_property(self._dsn, "set_device_mode", device_mode):
             await self.coordinator.async_request_refresh()
         else:
-            _LOGGER.error("Failed to set preset mode to %s", preset_mode)
+            raise HomeAssistantError("Failed to set preset mode to %s" % (preset_mode,))
 
+    @async_handle_command_errors
     async def async_set_fan_mode(self, fan_mode: str) -> None:
         """Set new target fan mode."""
         if fan_mode not in HEATER_FAN_MODES:
-            _LOGGER.error("Invalid fan mode: %s", fan_mode)
-            return
+            raise ServiceValidationError("Invalid fan mode: %s" % (fan_mode,))
         power_level = HEATER_FAN_MODES.index(fan_mode)
         if await self._api.set_device_property(self._dsn, "set_power_level", power_level):
             await self.coordinator.async_request_refresh()
         else:
-            _LOGGER.error("Failed to set fan mode to %s", fan_mode)
+            raise HomeAssistantError("Failed to set fan mode to %s" % (fan_mode,))
 
+    @async_handle_command_errors
     async def async_set_temperature(self, **kwargs: Any) -> None:
         """Set new target temperature."""
         temperature = kwargs.get(ATTR_TEMPERATURE)
@@ -363,7 +371,7 @@ class DeLonghiHeater(DeLonghiEntity, ClimateEntity):  # pyright: ignore[reportIn
         if await self._api.set_device_property(self._dsn, "temperature_setpoint", float(temperature)):
             await self.coordinator.async_request_refresh()
         else:
-            _LOGGER.error("Failed to set temperature setpoint")
+            raise HomeAssistantError("Failed to set temperature setpoint")
 
     def _update_attributes(self) -> None:
         """Refresh HA backing attributes from the coordinator snapshot."""

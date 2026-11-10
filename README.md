@@ -141,6 +141,11 @@ Once configured, you'll have access to various entities:
 4. **Slow Updates**: Adjust scan interval in configuration
 
 ### Debug Logging
+Connection failures report the authentication stage in HA's logs. Requests have
+a 15-second timeout and the complete login has a 60-second deadline. During
+startup, HA manages temporary-failure retries. Failed device commands surface in
+the UI and automation traces; rejected credentials start reauthentication.
+
 Add to your `configuration.yaml`:
 ```yaml
 logger:

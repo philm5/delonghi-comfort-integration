@@ -93,3 +93,11 @@ CI adds the official hassfest and HACS repository actions. Those hosted action
 runs require pushing the changes; local tests do not establish a passing hosted
 run or catalog acceptance. Cloud authentication and physical appliance behavior
 also require a live check after deployment.
+
+The release workflow now runs dependency, type, syntax, regression, hassfest and
+Marketplace checks before publishing. Regression coverage includes a synthetic
+eight-stage login, concurrent token renewal, startup retry exceptions, and HA's
+real platform setup, state recovery, service errors and unload for all device types.
+API calls have explicit 15-second request limits; login has a 60-second overall
+deadline. Sanitized connection messages identify the failed login stage. Device
+commands propagate failures to HA instead of silently returning unsuccessful results.

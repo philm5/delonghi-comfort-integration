@@ -72,14 +72,14 @@ async def test_empty_account_is_distinct_from_request_failure():
 async def test_expired_token_refreshes_and_retries_once(method):
     payload = [{"property": {"name": "room_temp", "value": 22}}]
     api, session = api_with_responses(response(401), response(data=payload))
-    api.refresh_access_token = AsyncMock(return_value="new-token")
+    api._refresh_access_token = AsyncMock(return_value="new-token")
     if method == "GET":
         assert await api.get_device_properties("test") == payload
     else:
         assert await api._post_request("test", {"datapoint": {"value": 1}}) == payload
         assert all(call.kwargs["json"] == {"datapoint": {"value": 1}}
                    for call in session.request.call_args_list)
-    api.refresh_access_token.assert_awaited_once()
+    api._refresh_access_token.assert_awaited_once()
     assert session.request.call_count == 2
     assert session.request.call_args_list[0].kwargs["headers"]["Authorization"] == "auth_token old-token"
     assert session.request.call_args_list[1].kwargs["headers"]["Authorization"] == "auth_token new-token"
@@ -87,7 +87,7 @@ async def test_expired_token_refreshes_and_retries_once(method):
 
 async def test_repeated_unauthorized_propagates_auth_failure():
     api, session = api_with_responses(response(401), response(401))
-    api.refresh_access_token = AsyncMock(return_value="new-token")
+    api._refresh_access_token = AsyncMock(return_value="new-token")
     with pytest.raises(DeLonghiAuthError):
         await api.get_device_properties("test")
     assert api.access_token is None
@@ -98,7 +98,7 @@ async def test_repeated_unauthorized_propagates_auth_failure():
 @pytest.mark.parametrize("failure", [DeLonghiAuthError("rejected"), DeLonghiConnectionError("offline")])
 async def test_refresh_failure_propagates(failure):
     api, session = api_with_responses(response(401))
-    api.refresh_access_token = AsyncMock(side_effect=failure)
+    api._refresh_access_token = AsyncMock(side_effect=failure)
     with pytest.raises(type(failure)):
         await api.get_device_properties("test")
     assert session.request.call_count == 1
@@ -175,3 +175,132 @@ async def test_login_failure_classification(login_data, error):
     session.post.return_value = login
     with pytest.raises(error):
         await api.authenticate()
+
+
+def successful_login(session):
+    """Synthetic responses for all eight auth stages; no real account data."""
+    import json
+
+    authorize = response()
+    authorize.headers = {"Location": "https://example.test/?context=context"}
+    identifiers = response()
+    identifiers.text = AsyncMock(return_value=json.dumps({"ucid": "ucid", "gmid": "gmid", "gmidTicket": "ticket"}))
+    login = response()
+    login.text = AsyncMock(return_value=json.dumps({"statusCode": 200, "sessionInfo": {"login_token": "login-token"}}))
+    user = response()
+    user.text = AsyncMock(return_value=json.dumps({"UID": "uid", "UIDSignature": "uid-signature", "signatureTimestamp": "123"}))
+    consent = response()
+    consent.text = AsyncMock(return_value='const consentObj2Sig = "signature";')
+    continuation = response()
+    continuation.headers = {"Location": "https://example.test/?code=oidc-code"}
+    token = response()
+    token.text = AsyncMock(return_value=json.dumps({"access_token": "idp-token"}))
+    ayla = response()
+    ayla.text = AsyncMock(return_value=json.dumps({"access_token": "ayla-token", "refresh_token": "ayla-refresh"}))
+    session.get.side_effect = [authorize, identifiers, consent, continuation]
+    session.post.side_effect = [login, user, token, ayla]
+
+
+async def test_complete_login_flow():
+    from custom_components.delonghi_comfort.api import REQUEST_TIMEOUT
+
+    api, session = api_with_responses()
+    successful_login(session)
+    assert await api.authenticate()
+    assert api.access_token == "ayla-token"
+    assert api.refresh_token == "ayla-refresh"
+    assert [call[0] for call in session.method_calls] == ["get", "get", "post", "post", "get", "get", "post", "post"]
+    for call in session.method_calls:
+        assert call.kwargs["timeout"] == REQUEST_TIMEOUT
+    assert session.get.call_args_list[2].kwargs["params"]["UIDSignature"] == "uid-signature"
+    assert session.get.call_args_list[3].kwargs["params"]["login_token"] == "login-token"
+    assert session.post.call_args_list[2].kwargs["data"]["code"] == "oidc-code"
+    assert session.post.call_args_list[3].kwargs["data"]["token"] == "idp-token"
+
+
+async def test_concurrent_login_is_shared():
+    import asyncio
+
+    api, session = api_with_responses()
+    successful_login(session)
+    # Force overlap while the first request is waiting for the network.
+    authorize = session.get.side_effect
+    # Keep the real eight-stage implementation and delay its first response.
+    first = next(authorize)
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    async def enter():
+        entered.set()
+        await release.wait()
+        return first
+    first.__aenter__ = AsyncMock(side_effect=enter)
+    session.get.side_effect = [first, *authorize]
+    task = asyncio.create_task(api.authenticate())
+    await entered.wait()
+    other = asyncio.create_task(api.authenticate())
+    await asyncio.sleep(0)
+    release.set()
+    assert await asyncio.gather(task, other) == [True, True]
+    assert session.get.call_count == 4
+    assert session.post.call_count == 4
+
+
+async def test_concurrent_401s_share_one_refresh():
+    import asyncio
+
+    api, session = api_with_responses()
+    initial_requests = 0
+    both_started = asyncio.Event()
+    def request(*args, **kwargs):
+        nonlocal initial_requests
+        if kwargs["headers"]["Authorization"] == "auth_token old-token":
+            initial_requests += 1
+            if initial_requests == 2:
+                both_started.set()
+            result = response(401)
+            async def enter():
+                await both_started.wait()
+                return result
+            result.__aenter__ = AsyncMock(side_effect=enter)
+            return result
+        return response(data=[])
+    session.request.side_effect = request
+    async def refresh():
+        await asyncio.sleep(0)
+        return "new-token"
+    api._refresh_access_token = AsyncMock(side_effect=refresh)
+    assert await asyncio.gather(api.get_devices(), api.get_devices()) == [[], []]
+    api._refresh_access_token.assert_awaited_once()
+    assert session.request.call_count == 4
+
+
+async def test_auth_deadline_cancels_stalled_login(monkeypatch):
+    import asyncio
+    import custom_components.delonghi_comfort.api as module
+
+    api, session = api_with_responses()
+    stalled = response()
+    async def enter():
+        await asyncio.Event().wait()
+    stalled.__aenter__ = AsyncMock(side_effect=enter)
+    session.get.return_value = stalled
+    monkeypatch.setattr(module, "AUTH_TIMEOUT", 0.01)
+    with pytest.raises(DeLonghiConnectionError, match="OIDC authorization: TimeoutError"):
+        await api.authenticate()
+    assert not api._auth_lock.locked()
+
+
+async def test_auth_transport_error_does_not_disclose_secrets():
+    api, session = api_with_responses()
+    session.get.side_effect = aiohttp.ClientConnectionError("password=private&token=secret")
+    with pytest.raises(DeLonghiConnectionError) as error:
+        await api.authenticate()
+    assert str(error.value) == "Authentication failed during OIDC authorization: ClientConnectionError"
+
+
+@pytest.mark.parametrize("error", [DeLonghiAuthError("rejected"), DeLonghiConnectionError("offline")])
+async def test_command_preserves_api_errors(error):
+    api, session = api_with_responses()
+    api._post_request = AsyncMock(side_effect=error)
+    with pytest.raises(type(error)):
+        await api.set_device_status("test", 1)

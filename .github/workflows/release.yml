@@ -26,10 +26,19 @@ jobs:
         enable-cache: true
     - name: Install test dependencies
       run: uv sync --locked
-    - name: Verify dependencies and regression tests
+    - name: Verify dependencies, types, syntax and regression tests
       run: |
         uv pip check
+        uv run --frozen pyright
+        uv run --frozen python -m compileall -q custom_components scripts tests discover.py
         uv run --frozen pytest
+    - name: Validate Home Assistant integration
+      uses: home-assistant/actions/hassfest@master
+    - name: Validate Marketplace repository
+      uses: hacs/action@main
+      with:
+        category: integration
+        comment: false
     - name: Build and check release version
       env:
         RELEASE_TAG: ${{ inputs.tag || github.ref_name }}

@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from homeassistant.components.climate import HVACMode
 from homeassistant.components.switch import SwitchEntityDescription
+from homeassistant.exceptions import ServiceValidationError
 
 from custom_components.delonghi_comfort.api import DeLonghiAPI
 from custom_components.delonghi_comfort.binary_sensor import (
@@ -104,7 +105,41 @@ async def test_unknown_switch_key_does_not_write(hass, entry):
     api = MagicMock(spec=DeLonghiAPI)
     coordinator = DeLonghiCoordinator(hass, api, "test", {}, entry)
     entity = DeLonghiSwitch(coordinator, SwitchEntityDescription(key="unknown"))
-    await entity.async_turn_on()
-    await entity.async_turn_off()
+    with pytest.raises(ServiceValidationError):
+        await entity.async_turn_on()
+    with pytest.raises(ServiceValidationError):
+        await entity.async_turn_off()
     api.set_device_status.assert_not_called()
     api.set_silent_mode.assert_not_called()
+
+
+@pytest.mark.parametrize("factory, method, arguments, api_method", [
+    (DeLonghiClimate, "async_turn_on", (), "set_device_status"),
+    (DeLonghiHeater, "async_turn_on", (), "set_device_property"),
+    (DeLonghiDehumidifier, "async_turn_on", (), "set_device_property"),
+    (lambda c: DeLonghiNumber(c, NUMBER_DESCRIPTIONS[0]), "async_set_native_value", (23,), "set_temperature_setpoint"),
+    (lambda c: DeLonghiSelect(c, SELECT_DESCRIPTIONS[0]), "async_select_option", ("cooling",), "set_device_mode"),
+    (HeaterBrightness, "async_select_option", ("Level 2",), "set_device_property"),
+    (DehumidifierModeSelect, "async_select_option", ("dry",), "set_device_property"),
+    (lambda c: DeLonghiSwitch(c, SWITCH_DESCRIPTIONS[0]), "async_turn_on", (), "set_device_status"),
+    (lambda c: HeaterSwitch(c, HEATER_DESCRIPTIONS[0]), "async_turn_on", (), "set_device_property"),
+    (lambda c: DehumidifierSwitch(c, DEHUMIDIFIER_SWITCH_DESCRIPTIONS[0]), "async_turn_on", (), "set_device_property"),
+])
+@pytest.mark.parametrize("auth_failure", [False, True])
+async def test_commands_report_errors_to_ha(hass, entry, factory, method, arguments, api_method, auth_failure):
+    from homeassistant.exceptions import HomeAssistantError
+    from custom_components.delonghi_comfort.exceptions import DeLonghiAuthError, DeLonghiConnectionError
+
+    api = MagicMock(spec=DeLonghiAPI)
+    api.access_token = "old-token"
+    error = DeLonghiAuthError("rejected") if auth_failure else DeLonghiConnectionError("offline")
+    getattr(api, api_method).side_effect = error
+    coordinator = DeLonghiCoordinator(hass, api, "test", {}, entry)
+    entity = factory(coordinator)
+    with patch.object(type(entry), "async_start_reauth") as reauth, patch.object(coordinator, "async_request_refresh") as refresh:
+        with pytest.raises(HomeAssistantError):
+            await getattr(entity, method)(*arguments)
+        assert reauth.call_count == int(auth_failure)
+        refresh.assert_not_called()
+    if auth_failure:
+        assert api.access_token is None

@@ -11,6 +11,7 @@ from homeassistant.components.number import (
     NumberMode,
 )
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.const import PERCENTAGE, UnitOfTemperature
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
@@ -18,7 +19,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
 from .coordinator import DeLonghiCoordinator
-from .entity import DeLonghiEntity
+from .entity import DeLonghiEntity, async_handle_command_errors
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -100,6 +101,7 @@ class DeLonghiNumber(DeLonghiEntity, NumberEntity):
         """Return the current value."""
         return self.coordinator.data.get(self.entity_description.key)
 
+    @async_handle_command_errors
     async def async_set_native_value(self, value: float) -> None:
         """Set the value."""
         if self.entity_description.key == "temp_setpoint":
@@ -116,7 +118,7 @@ class DeLonghiNumber(DeLonghiEntity, NumberEntity):
         if success:
             await self.coordinator.async_request_refresh()
         else:
-            _LOGGER.error("Failed to set %s to %s", self.entity_description.key, value)
+            raise HomeAssistantError("Failed to set %s to %s" % (self.entity_description.key, value,))
 
     @property
     def available(self) -> bool:  # pyright: ignore[reportIncompatibleVariableOverride]

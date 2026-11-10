@@ -72,12 +72,14 @@ class DelonghiComfortConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         try:
             await api.authenticate()
             devices = await api.get_devices()
-        except DeLonghiAuthError:
+        except DeLonghiAuthError as err:
+            _LOGGER.warning("De'Longhi credential check failed: %s", err)
             return "invalid_auth"
-        except DeLonghiConnectionError:
+        except DeLonghiConnectionError as err:
+            _LOGGER.warning("De'Longhi connection check failed: %s", err)
             return "cannot_connect"
-        except Exception:
-            _LOGGER.exception("Unexpected error validating De'Longhi credentials")
+        except Exception as err:
+            _LOGGER.error("Unexpected De'Longhi credential check failure: %s", type(err).__name__)
             return "unknown"
         return None if devices else "no_devices"
 

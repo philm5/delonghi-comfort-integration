@@ -12,9 +12,10 @@ from homeassistant.components.humidifier import (
     HumidifierEntityFeature,
 )
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from .entity import DeLonghiEntity, async_handle_command_errors
 
 from .const import DOMAIN
 from .coordinator import DeLonghiCoordinator
@@ -50,7 +51,7 @@ async def async_setup_entry(
 
 
 # HA combines CoordinatorEntity's dynamic availability with Entity's cached descriptor.
-class DeLonghiDehumidifier(CoordinatorEntity[DeLonghiCoordinator], HumidifierEntity):  # pyright: ignore[reportIncompatibleVariableOverride]
+class DeLonghiDehumidifier(DeLonghiEntity, HumidifierEntity):  # pyright: ignore[reportIncompatibleVariableOverride]
     """De'Longhi dehumidifier."""
 
     entity_description = DEHUMIDIFIER_ENTITY_DESCRIPTION
@@ -80,44 +81,41 @@ class DeLonghiDehumidifier(CoordinatorEntity[DeLonghiCoordinator], HumidifierEnt
             DEVICE_MODE_TO_DEHUMIDIFIER.get(mode) if isinstance(mode, int) else None
         )
 
-    @callback
-    def _handle_coordinator_update(self) -> None:
-        """Refresh the attributes before Home Assistant writes the new state."""
-        self._update_attributes()
-        super()._handle_coordinator_update()
-
+    @async_handle_command_errors
     async def async_turn_on(self, **kwargs: Any) -> None:
         if await self.coordinator.api.set_device_property(
             self.coordinator.dsn, "set_status", 1
         ):
             await self.coordinator.async_request_refresh()
         else:
-            _LOGGER.error("Failed to turn on dehumidifier %s", self.coordinator.dsn)
+            raise HomeAssistantError("Failed to turn on dehumidifier %s" % (self.coordinator.dsn,))
 
+    @async_handle_command_errors
     async def async_turn_off(self, **kwargs: Any) -> None:
         if await self.coordinator.api.set_device_property(
             self.coordinator.dsn, "set_status", 2
         ):
             await self.coordinator.async_request_refresh()
         else:
-            _LOGGER.error("Failed to turn off dehumidifier %s", self.coordinator.dsn)
+            raise HomeAssistantError("Failed to turn off dehumidifier %s" % (self.coordinator.dsn,))
 
+    @async_handle_command_errors
     async def async_set_humidity(self, humidity: int) -> None:
         if await self.coordinator.api.set_humidity_setpoint(
             self.coordinator.dsn, humidity
         ):
             await self.coordinator.async_request_refresh()
         else:
-            _LOGGER.error("Failed to set humidity setpoint on %s", self.coordinator.dsn)
+            raise HomeAssistantError("Failed to set humidity setpoint on %s" % (self.coordinator.dsn,))
 
+    @async_handle_command_errors
     async def async_set_mode(self, mode: str) -> None:
         value = DEHUMIDIFIER_TO_DEVICE_MODE.get(mode)
         if value is None:
-            _LOGGER.error("Unknown dehumidifier mode: %s", mode)
-            return
+            raise ServiceValidationError("Unknown dehumidifier mode: %s" % (mode,))
         if await self.coordinator.api.set_device_property(
             self.coordinator.dsn, "device_mode", value
         ):
             await self.coordinator.async_request_refresh()
         else:
-            _LOGGER.error("Failed to set dehumidifier mode to %s", mode)
+            raise HomeAssistantError("Failed to set dehumidifier mode to %s" % (mode,))
