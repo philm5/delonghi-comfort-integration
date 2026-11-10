@@ -274,7 +274,7 @@ class DeLonghiAPI:
                 response.raise_for_status()
                 consent_text = await response.text()
 
-            signature = consent_text.split("const consentObj2Sig = '")[1].split("';")[0]
+            signature = consent_text.split('const consentObj2Sig = "')[1].split('";')[0]
 
             # ----------------------------------------------------------
             # Step 6: Authorisation continuation – obtain OIDC `code`
