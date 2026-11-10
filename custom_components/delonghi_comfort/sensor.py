@@ -18,12 +18,14 @@ from homeassistant.const import (
     UnitOfTemperature,
     UnitOfTime,
 )
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity import EntityCategory
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
+from .coordinator import DeLonghiCoordinator
+from .entity import DeLonghiEntity
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -143,14 +145,14 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
-class DeLonghiSensor(CoordinatorEntity, SensorEntity):
+class DeLonghiSensor(DeLonghiEntity, SensorEntity):
     """Representation of a De'Longhi sensor."""
 
     _attr_has_entity_name = True
 
     def __init__(
         self,
-        coordinator,
+        coordinator: DeLonghiCoordinator,
         description: SensorEntityDescription,
     ) -> None:
         """Initialize the sensor."""
@@ -159,16 +161,16 @@ class DeLonghiSensor(CoordinatorEntity, SensorEntity):
         self._attr_unique_id = f"{coordinator.dsn}_{description.key}"
 
         # Device information
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, coordinator.dsn)},
-            "name": coordinator.device_name,
-            "manufacturer": "De'Longhi",
-            "model": coordinator.device_model,
-            "sw_version": coordinator.device_version,
-        }
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, coordinator.dsn)},
+            name=coordinator.device_name,
+            manufacturer="De'Longhi",
+            model=coordinator.device_model,
+            sw_version=coordinator.device_version,
+        )
+        self._update_attributes()
 
-    @property
-    def native_value(self) -> Any:
+    def _read_native_value(self) -> Any:
         """Return the value of the sensor."""
         value = self.coordinator.data.get(self.entity_description.key)
 
@@ -188,11 +190,16 @@ class DeLonghiSensor(CoordinatorEntity, SensorEntity):
         return value
 
     @property
-    def available(self) -> bool:
+    def available(self) -> bool:  # pyright: ignore[reportIncompatibleVariableOverride]
         """Return if entity is available."""
         return (
             super().available and self.entity_description.key in self.coordinator.data
         )
+
+    def _update_attributes(self) -> None:
+        """Refresh HA backing attributes from the coordinator snapshot."""
+        self._attr_native_value = self._read_native_value()
+
 
 DEHUMIDIFIER_SENSOR_DESCRIPTIONS = (
     SensorEntityDescription(
@@ -234,7 +241,7 @@ DEHUMIDIFIER_SENSOR_DESCRIPTIONS = (
 )
 
 
-class DehumidifierSensor(CoordinatorEntity, SensorEntity):
+class DehumidifierSensor(DeLonghiEntity, SensorEntity):
     """Sensor for De'Longhi dehumidifier devices."""
 
     _attr_has_entity_name = True
@@ -242,16 +249,16 @@ class DehumidifierSensor(CoordinatorEntity, SensorEntity):
     # Properties requiring ÷10 scaling
     _SCALED_KEYS = {"room_temp", "heat_exchanger_temp"}
 
-    def __init__(self, coordinator, description: SensorEntityDescription) -> None:
+    def __init__(self, coordinator: DeLonghiCoordinator, description: SensorEntityDescription) -> None:
         super().__init__(coordinator)
         self.entity_description = description
         self._attr_unique_id = (
             f"delonghi_dehumidifier_{coordinator.dsn}_{description.key}"  # stable, keep prefix
         )
         self._attr_device_info = coordinator.get_device_info()
+        self._update_attributes()
 
-    @property
-    def native_value(self) -> Any:
+    def _read_native_value(self) -> Any:
         value = self.coordinator.data.get(self.entity_description.key)
         if value is None:
             return None
@@ -260,14 +267,18 @@ class DehumidifierSensor(CoordinatorEntity, SensorEntity):
         return value
 
     @property
-    def available(self) -> bool:
+    def available(self) -> bool:  # pyright: ignore[reportIncompatibleVariableOverride]
         return (
             super().available
             and self.entity_description.key in self.coordinator.data
         )
 
+    def _update_attributes(self) -> None:
+        """Refresh HA backing attributes from the coordinator snapshot."""
+        self._attr_native_value = self._read_native_value()
 
-class HeaterTemperature(CoordinatorEntity, SensorEntity):
+
+class HeaterTemperature(DeLonghiEntity, SensorEntity):  # pyright: ignore[reportIncompatibleVariableOverride]
     """Representation of a De'Longhi heater temperature sensor."""
     _attr_has_entity_name = True
     _attr_device_class = SensorDeviceClass.TEMPERATURE
@@ -276,13 +287,17 @@ class HeaterTemperature(CoordinatorEntity, SensorEntity):
     _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
     _attr_state_class = SensorStateClass.MEASUREMENT
 
-    def __init__(self, coordinator) -> None:
+    def __init__(self, coordinator: DeLonghiCoordinator) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
         self._attr_unique_id = f"delonghi_heater_{coordinator.dsn}_temperature"
         self._attr_device_info = coordinator.get_device_info()
+        self._update_attributes()
 
-    @property
-    def native_value(self) -> Any:
+    def _read_native_value(self) -> Any:
         """Return the value of the sensor."""
         return self.coordinator.data.get("room_temp")
+
+    def _update_attributes(self) -> None:
+        """Refresh HA backing attributes from the coordinator snapshot."""
+        self._attr_native_value = self._read_native_value()

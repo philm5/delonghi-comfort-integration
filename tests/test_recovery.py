@@ -1,6 +1,8 @@
 """Regression coverage for credential recovery and unavailable-state loading."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import aiohttp
 
 import pytest
 from homeassistant.exceptions import ConfigEntryAuthFailed
@@ -29,8 +31,10 @@ async def test_reauth_updates_same_entry(hass, entry):
     flow.flow_id = "test-flow"
     flow.context = {"entry_id": entry.entry_id, "source": "reauth"}
     initial = await flow.async_step_reauth(entry.data)
-    assert initial["step_id"] == "reauth_confirm"
-    assert initial["data_schema"]({"password": "new"}) == {"password": "new"}
+    assert initial.get("step_id") == "reauth_confirm"
+    schema = initial.get("data_schema")
+    assert schema is not None
+    assert schema({"password": "new"}) == {"password": "new"}
 
     with (
         patch("custom_components.delonghi_comfort.config_flow.DeLonghiAPI") as client,
@@ -40,8 +44,8 @@ async def test_reauth_updates_same_entry(hass, entry):
         client.return_value.get_devices = AsyncMock(return_value=[{"device": {"dsn": "test"}}])
         result = await flow.async_step_reauth_confirm({"password": "new"})
 
-    assert result["type"] == "abort"
-    assert result["reason"] == "reauth_successful"
+    assert result.get("type") == "abort"
+    assert result.get("reason") == "reauth_successful"
     assert hass.config_entries.async_entries(DOMAIN) == [entry]
     assert entry.data == {"username": "test@example.com", "password": "new", "language": "it"}
     assert entry.options == {"scan_interval": 15}
@@ -68,7 +72,7 @@ async def test_reauth_failure_keeps_password(hass, entry, failure, expected):
     ):
         client.return_value.authenticate = AsyncMock(side_effect=failure)
         result = await flow.async_step_reauth_confirm({"password": "new"})
-    assert result["errors"] == {"base": expected}
+    assert result.get("errors") == {"base": expected}
     assert entry.data["password"] == "old"
     reload.assert_not_called()
 
@@ -84,8 +88,8 @@ async def test_duplicate_account_still_aborts(hass, entry):
             await flow.async_step_user(dict(entry.data))
 
 
-async def test_first_poll_failure_and_recovery(hass, entry):
-    api = DeLonghiAPI("test", "test", None)
+async def test_first_poll_failure_and_recovery(hass, entry, monkeypatch):
+    api = DeLonghiAPI("test", "test", MagicMock(spec=aiohttp.ClientSession))
     api.access_token = "token"
     api.get_device_properties = AsyncMock(side_effect=[
         DeLonghiConnectionError("offline"),
@@ -98,6 +102,9 @@ async def test_first_poll_failure_and_recovery(hass, entry):
     assert not coordinator.last_update_success
 
     sensor = DeLonghiSensor(coordinator, SENSOR_DESCRIPTIONS[0])
+    # Model HA subscribing the entity to coordinator updates.
+    monkeypatch.setattr(sensor, "async_write_ha_state", MagicMock())
+    remove_listener = coordinator.async_add_listener(sensor._handle_coordinator_update)
     assert sensor.native_value is None
     assert not sensor.available
     for entity in (DeLonghiClimate(coordinator), DeLonghiHeater(coordinator), DeLonghiDehumidifier(coordinator)):
@@ -106,7 +113,7 @@ async def test_first_poll_failure_and_recovery(hass, entry):
     heater = DeLonghiHeater(coordinator)
     assert heater.extra_state_attributes == {}
     assert heater.preset_mode is None
-    assert heater.current_temperature is None
+    assert heater.native_current_temperature is None
     assert DeLonghiDehumidifier(coordinator).current_humidity is None
 
     await coordinator.async_refresh()
@@ -115,11 +122,12 @@ async def test_first_poll_failure_and_recovery(hass, entry):
     await coordinator.async_refresh()
     assert not sensor.available
     assert coordinator.data == {"room_temp": 22}
+    remove_listener()
 
 
 @pytest.mark.parametrize("missing_token", [False, True])
 async def test_auth_failure_starts_reauth(hass, entry, missing_token):
-    api = DeLonghiAPI("test", "test", None)
+    api = DeLonghiAPI("test", "test", MagicMock(spec=aiohttp.ClientSession))
     api.access_token = None if missing_token else "expired"
     api.authenticate = AsyncMock(side_effect=DeLonghiAuthError("rejected"))
     api.get_device_properties = AsyncMock(side_effect=DeLonghiAuthError("rejected"))
@@ -132,7 +140,7 @@ async def test_auth_failure_starts_reauth(hass, entry, missing_token):
 
 
 async def test_setup_does_not_load_platforms_after_auth_failure(hass, entry):
-    api = DeLonghiAPI("test", "test", None)
+    api = DeLonghiAPI("test", "test", MagicMock(spec=aiohttp.ClientSession))
     api.access_token = "token"
     api.authenticate = AsyncMock(return_value=True)
     api.get_devices = AsyncMock(return_value=[{"device": {"dsn": "test"}}])
@@ -148,7 +156,7 @@ async def test_setup_does_not_load_platforms_after_auth_failure(hass, entry):
 
 
 async def test_setup_loads_unavailable_entities_on_connection_failure(hass, entry):
-    api = DeLonghiAPI("test", "test", None)
+    api = DeLonghiAPI("test", "test", MagicMock(spec=aiohttp.ClientSession))
     api.access_token = "token"
     api.authenticate = AsyncMock(return_value=True)
     api.get_devices = AsyncMock(return_value=[{"device": {"dsn": "test"}}])

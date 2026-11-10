@@ -33,7 +33,7 @@ Standard HA custom component layout under `custom_components/delonghi_comfort/`:
 2. **HA platform contracts** — each platform has strict interface requirements; wrong property types or missing attributes cause silent failures, not exceptions
 3. **Dehumidifier property naming** diverges significantly from A/C — different property names, `÷10` temperature scaling, bitmask alarm state. Documented in `oem_model/DL-dehumidifier.md`.
 
-Regression tests run against Core 2026.11.1 on Python 3.14. CI also runs hassfest and Marketplace repository validation. No type-checking toolchain.
+Regression tests run against Core 2026.11.1 on Python 3.14. `uv run pyright` checks integration code, scripts and tests in standard mode with shared Pylance configuration in `pyproject.toml`. CI also runs this type check, hassfest and Marketplace repository validation. Platform entities refresh HA backing attributes through `entity.py`; climate temperatures use Core's native temperature API.
 
 ## Key Files
 1. `custom_components/delonghi_comfort/api.py` — auth flow and all device I/O

@@ -115,6 +115,9 @@ class DeLonghiAPI:
                 response.raise_for_status()
                 context = self.get_query_param(response.headers["Location"], "context")
 
+            if not context:
+                raise DeLonghiConnectionError("Missing context in authorization redirect")
+
             # ----------------------------------------------------------
             # Step 2: Fetch Gigya session identifiers (ucid / gmid)
             # ----------------------------------------------------------
@@ -524,7 +527,7 @@ class DeLonghiAPI:
             _LOGGER.error("Failed to set silent mode for %s: %s", dsn, err)
             return False
 
-    async def set_humidity_setpoint(self, dsn: str, humidity: int) -> bool:
+    async def set_humidity_setpoint(self, dsn: str, humidity: float) -> bool:
         """Set humidity setpoint (0–100 %)."""
         try:
             response = await self._post_request(

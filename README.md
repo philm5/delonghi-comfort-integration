@@ -160,6 +160,7 @@ these commands from the repository root:
 
 ```bash
 uv sync
+uv run pyright
 uv run pytest
 ```
 
@@ -174,6 +175,14 @@ resolved versions. After editing dependencies, run `uv lock` and `uv sync`, and
 include both files in the change. CI uses `uv sync --locked` to check that they
 agree. The project is configured as a development environment; Home Assistant
 continues to load the integration from `custom_components/`.
+
+`uv run pyright` checks all integration code, scripts and tests using the same
+standard type-checking rules as Pylance. The shared configuration is in
+`pyproject.toml`; select the project's `.venv` interpreter in VS Code. You can
+also run **Python: type check project** using Tasks: Run Task. CI runs this check
+alongside the regression suite. Availability overrides have narrowly scoped
+exceptions for HA's dynamic CoordinatorEntity property versus its cached Entity
+descriptor; all other type diagnostics remain enabled.
 
 ### Debug Home Assistant in Docker
 
@@ -240,7 +249,7 @@ This repository includes GitHub Actions for quality assurance and release manage
 
 #### Validation workflow
 
-Pull requests and pushes to main/master run the Python 3.14 regression suite,
+Pull requests and pushes to `main` run the Python 3.14 regression suite,
 Marketplace manifest and archive checks, dependency checks, hassfest, and the
 HACS repository action (also used by the Marketplace).
 

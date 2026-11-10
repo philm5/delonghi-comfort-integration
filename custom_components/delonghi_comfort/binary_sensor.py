@@ -10,12 +10,13 @@ from homeassistant.components.binary_sensor import (
     BinarySensorEntityDescription,
 )
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
+from .coordinator import DeLonghiCoordinator
+from .entity import DeLonghiEntity
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -56,19 +57,19 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
-class DehumidifierBinarySensor(CoordinatorEntity, BinarySensorEntity):
+class DehumidifierBinarySensor(DeLonghiEntity, BinarySensorEntity):
     """Binary sensor derived from the alarm_state bitmask."""
 
     _attr_has_entity_name = True
 
-    def __init__(self, coordinator, description: BinarySensorEntityDescription) -> None:
+    def __init__(self, coordinator: DeLonghiCoordinator, description: BinarySensorEntityDescription) -> None:
         super().__init__(coordinator)
         self.entity_description = description
         self._attr_unique_id = f"delonghi_dehumidifier_{coordinator.dsn}_{description.key}"
         self._attr_device_info = coordinator.get_device_info()
+        self._update_attributes()
 
-    @property
-    def is_on(self) -> bool | None:
+    def _read_is_on(self) -> bool | None:
         alarm_state = self.coordinator.data.get("alarm_state")
         if alarm_state is None:
             return None
@@ -76,5 +77,9 @@ class DehumidifierBinarySensor(CoordinatorEntity, BinarySensorEntity):
         return bool(alarm_state & mask)
 
     @property
-    def available(self) -> bool:
+    def available(self) -> bool:  # pyright: ignore[reportIncompatibleVariableOverride]
         return super().available and "alarm_state" in self.coordinator.data
+
+    def _update_attributes(self) -> None:
+        """Refresh HA backing attributes from the coordinator snapshot."""
+        self._attr_is_on = self._read_is_on()

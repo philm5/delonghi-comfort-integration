@@ -8,10 +8,12 @@ from typing import Any
 from homeassistant.components.switch import SwitchEntity, SwitchEntityDescription, SwitchDeviceClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
+from .coordinator import DeLonghiCoordinator
+from .entity import DeLonghiEntity
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -85,14 +87,14 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
-class DeLonghiSwitch(CoordinatorEntity, SwitchEntity):
+class DeLonghiSwitch(DeLonghiEntity, SwitchEntity):
     """Representation of a De'Longhi switch entity."""
 
     _attr_has_entity_name = True
 
     def __init__(
         self,
-        coordinator,
+        coordinator: DeLonghiCoordinator,
         description: SwitchEntityDescription,
     ) -> None:
         """Initialize the switch entity."""
@@ -101,16 +103,16 @@ class DeLonghiSwitch(CoordinatorEntity, SwitchEntity):
         self._attr_unique_id = f"{coordinator.dsn}_{description.key}"
 
         # Device information
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, coordinator.dsn)},
-            "name": coordinator.device_name,
-            "manufacturer": "De'Longhi",
-            "model": coordinator.device_model,
-            "sw_version": coordinator.device_version,
-        }
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, coordinator.dsn)},
+            name=coordinator.device_name,
+            manufacturer="De'Longhi",
+            model=coordinator.device_model,
+            sw_version=coordinator.device_version,
+        )
+        self._update_attributes()
 
-    @property
-    def is_on(self) -> bool | None:
+    def _read_is_on(self) -> bool | None:
         """Return True if the switch is on."""
         value = self.coordinator.data.get(self.entity_description.key)
 
@@ -126,6 +128,9 @@ class DeLonghiSwitch(CoordinatorEntity, SwitchEntity):
             success = await self.coordinator.api.set_device_status(self.coordinator.dsn, 1)
         elif self.entity_description.key == "get_silent_function":
             success = await self.coordinator.api.set_silent_mode(self.coordinator.dsn, 1)
+        else:
+            _LOGGER.error("Unknown switch: %s", self.entity_description.key)
+            return
 
         if success:
             await self.coordinator.async_request_refresh()
@@ -138,6 +143,9 @@ class DeLonghiSwitch(CoordinatorEntity, SwitchEntity):
             success = await self.coordinator.api.set_device_status(self.coordinator.dsn, 2)
         elif self.entity_description.key == "get_silent_function":
             success = await self.coordinator.api.set_silent_mode(self.coordinator.dsn, 0)
+        else:
+            _LOGGER.error("Unknown switch: %s", self.entity_description.key)
+            return
 
         if success:
             await self.coordinator.async_request_refresh()
@@ -145,13 +153,17 @@ class DeLonghiSwitch(CoordinatorEntity, SwitchEntity):
             _LOGGER.error("Failed to change %s to 0", self.entity_description.key)
 
     @property
-    def available(self) -> bool:
+    def available(self) -> bool:  # pyright: ignore[reportIncompatibleVariableOverride]
         """Return if entity is available."""
         return (
             super().available and self.entity_description.key in self.coordinator.data
         )
 
-class HeaterSwitch(CoordinatorEntity, SwitchEntity):
+    def _update_attributes(self) -> None:
+        """Refresh HA backing attributes from the coordinator snapshot."""
+        self._attr_is_on = self._read_is_on()
+
+class HeaterSwitch(DeLonghiEntity, SwitchEntity):  # pyright: ignore[reportIncompatibleVariableOverride]
     """Representation of a De'Longhi heater switch entity."""
 
     _attr_device_class = SwitchDeviceClass.SWITCH
@@ -159,7 +171,7 @@ class HeaterSwitch(CoordinatorEntity, SwitchEntity):
 
     def __init__(
         self,
-        coordinator,
+        coordinator: DeLonghiCoordinator,
         description: SwitchEntityDescription,
     ) -> None:
         """Initialize the switch entity."""
@@ -168,9 +180,9 @@ class HeaterSwitch(CoordinatorEntity, SwitchEntity):
         self._attr_translation_key = description.key
         self._attr_unique_id = f"delonghi_heater_{coordinator.dsn}_{description.key}"
         self._attr_device_info = coordinator.get_device_info()
+        self._update_attributes()
 
-    @property
-    def is_on(self) -> bool | None:
+    def _read_is_on(self) -> bool | None:
         """Return True if the switch is on."""
         value = self.coordinator.data.get(f"get_{self.entity_description.key}")
         if value is None:
@@ -194,22 +206,26 @@ class HeaterSwitch(CoordinatorEntity, SwitchEntity):
         else:
             _LOGGER.error("Failed to turn off: %s", self.entity_description.key)
 
+    def _update_attributes(self) -> None:
+        """Refresh HA backing attributes from the coordinator snapshot."""
+        self._attr_is_on = self._read_is_on()
 
-class DehumidifierSwitch(CoordinatorEntity, SwitchEntity):
+
+class DehumidifierSwitch(DeLonghiEntity, SwitchEntity):
     """Switch entity for De'Longhi dehumidifier (set_eco, swing)."""
 
     _attr_has_entity_name = True
 
-    def __init__(self, coordinator, description: SwitchEntityDescription) -> None:
+    def __init__(self, coordinator: DeLonghiCoordinator, description: SwitchEntityDescription) -> None:
         super().__init__(coordinator)
         self.entity_description = description
         self._attr_unique_id = (
             f"delonghi_dehumidifier_{coordinator.dsn}_{description.key}"
         )
         self._attr_device_info = coordinator.get_device_info()
+        self._update_attributes()
 
-    @property
-    def is_on(self) -> bool | None:
+    def _read_is_on(self) -> bool | None:
         value = self.coordinator.data.get(self.entity_description.key)
         if value is None:
             return None
@@ -234,8 +250,12 @@ class DehumidifierSwitch(CoordinatorEntity, SwitchEntity):
             _LOGGER.error("Failed to turn off %s", self.entity_description.key)
 
     @property
-    def available(self) -> bool:
+    def available(self) -> bool:  # pyright: ignore[reportIncompatibleVariableOverride]
         return (
             super().available
             and self.entity_description.key in self.coordinator.data
         )
+
+    def _update_attributes(self) -> None:
+        """Refresh HA backing attributes from the coordinator snapshot."""
+        self._attr_is_on = self._read_is_on()

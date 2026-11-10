@@ -12,10 +12,12 @@ from homeassistant.components.climate import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_TEMPERATURE, UnitOfTemperature
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
+from .coordinator import DeLonghiCoordinator
+from .entity import DeLonghiEntity
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -27,6 +29,8 @@ DEVICE_MODE_TO_HVAC = {
 }
 
 HVAC_MODE_TO_DEVICE = {v: k for k, v in DEVICE_MODE_TO_HVAC.items()}
+HEATER_FAN_MODES = ["0%", "20%", "40%", "60%", "80%", "100%"]
+HEATER_PRESET_MODES = ["Day mode", "Night mode", "Antifrost", "Manual"]
 
 
 async def async_setup_entry(
@@ -38,7 +42,7 @@ async def async_setup_entry(
     data = hass.data[DOMAIN][config_entry.entry_id]
     airconditioner_coordinators = data["airconditioner_coordinators"]
 
-    entities = [
+    entities: list[ClimateEntity] = [
         DeLonghiClimate(coordinator=coordinator) for coordinator in airconditioner_coordinators
     ]
 
@@ -47,12 +51,12 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
-class DeLonghiClimate(CoordinatorEntity, ClimateEntity):
+class DeLonghiClimate(DeLonghiEntity, ClimateEntity):
     """Representation of a De'Longhi climate device."""
 
     def __init__(
         self,
-        coordinator,
+        coordinator: DeLonghiCoordinator,
     ) -> None:
         """Initialize the climate entity."""
         super().__init__(coordinator)
@@ -81,31 +85,30 @@ class DeLonghiClimate(CoordinatorEntity, ClimateEntity):
         # Fan modes - you can adjust these based on your device's capabilities
         self._attr_fan_modes = ["auto", "low", "medium", "high"]
 
-        self._attr_temperature_unit = UnitOfTemperature.CELSIUS
+        self._attr_native_temperature_unit = UnitOfTemperature.CELSIUS
         self._attr_min_temp = 18
         self._attr_max_temp = 32
         self._attr_target_temperature_step = 1
         self._attr_precision = 1
 
         # Device information
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, self._dsn)},
-            "name": coordinator.device_name,
-            "manufacturer": "De'Longhi",
-            "model": coordinator.device_model,
-            "sw_version": coordinator.device_version,
-            "via_device": (DOMAIN, self._dsn),
-        }
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, self._dsn)},
+            name=coordinator.device_name,
+            manufacturer="De'Longhi",
+            model=coordinator.device_model,
+            sw_version=coordinator.device_version,
+        )
+        self._update_attributes()
 
     @property
-    def available(self) -> bool:
+    def available(self) -> bool:  # pyright: ignore[reportIncompatibleVariableOverride]
         """Return True if entity is available."""
         return (
             self.coordinator.last_update_success and self.coordinator.data is not None
         )
 
-    @property
-    def hvac_action(self) -> HVACAction | None:
+    def _read_hvac_action(self) -> HVACAction | None:
         """Return the current running hvac operation."""
         status = self.coordinator.data.get("get_device_status")
         if status == 2:  # OFF
@@ -121,18 +124,15 @@ class DeLonghiClimate(CoordinatorEntity, ClimateEntity):
 
         return HVACAction.IDLE
 
-    @property
-    def current_temperature(self) -> float | None:
+    def _read_native_current_temperature(self) -> float | None:
         """Return the current temperature."""
         return self.coordinator.data.get("room_temp")
 
-    @property
-    def target_temperature(self) -> float | None:
+    def _read_native_target_temperature(self) -> float | None:
         """Return the temperature we try to reach."""
         return self.coordinator.data.get("temp_setpoint")
 
-    @property
-    def hvac_mode(self) -> HVACMode:
+    def _read_hvac_mode(self) -> HVACMode:
         """Return current operation mode."""
         # Check if device is on/off first
         status = self.coordinator.data.get("get_device_status")
@@ -141,15 +141,16 @@ class DeLonghiClimate(CoordinatorEntity, ClimateEntity):
 
         # Get device mode
         device_mode = self.coordinator.data.get("get_device_mode")
-        return DEVICE_MODE_TO_HVAC.get(device_mode, HVACMode.OFF)
+        return (
+            DEVICE_MODE_TO_HVAC.get(device_mode, HVACMode.OFF)
+            if isinstance(device_mode, int) else HVACMode.OFF
+        )
 
-    @property
-    def current_humidity(self) -> int | None:
+    def _read_current_humidity(self) -> int | None:
         """Return the current humidity."""
         return self.coordinator.data.get("room_hum")
 
-    @property
-    def fan_mode(self) -> str | None:
+    def _read_fan_mode(self) -> str | None:
         """Return the fan mode."""
         # Get fan speed from device data
         fan_speed = self.coordinator.data.get("get_int_fan_speed")
@@ -224,12 +225,22 @@ class DeLonghiClimate(CoordinatorEntity, ClimateEntity):
         else:
             _LOGGER.error("Failed to turn off device")
 
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
+    def _read_extra_state_attributes(self) -> dict[str, Any]:
         """Return additional state attributes."""
         return dict(self.coordinator.data)
 
-class DeLonghiHeater(CoordinatorEntity, ClimateEntity):
+    def _update_attributes(self) -> None:
+        """Refresh HA backing attributes from the coordinator snapshot."""
+        self._attr_hvac_action = self._read_hvac_action()
+        self._attr_native_current_temperature = self._read_native_current_temperature()
+        self._attr_native_target_temperature = self._read_native_target_temperature()
+        self._attr_hvac_mode = self._read_hvac_mode()
+        self._attr_current_humidity = self._read_current_humidity()
+        self._attr_fan_mode = self._read_fan_mode()
+        self._attr_extra_state_attributes = self._read_extra_state_attributes()
+
+
+class DeLonghiHeater(DeLonghiEntity, ClimateEntity):  # pyright: ignore[reportIncompatibleVariableOverride]
     """Representation of a De'Longhi climate device."""
 
     # Entity - Generic properties
@@ -242,17 +253,17 @@ class DeLonghiHeater(CoordinatorEntity, ClimateEntity):
     _attr_icon = "mdi:radiator"
 
     # Climate entity - Properties
-    _attr_fan_modes = ["0%", "20%", "40%", "60%", "80%", "100%"]
+    _attr_fan_modes = HEATER_FAN_MODES
     _attr_hvac_modes = [HVACMode.OFF, HVACMode.HEAT]
     _attr_max_temp = 28
     _attr_min_temp = 10
-    _attr_preset_modes = ["Day mode", "Night mode", "Antifrost", "Manual"]
+    _attr_preset_modes = HEATER_PRESET_MODES
     _attr_target_temperature_step = 0.5
-    _attr_temperature_unit = UnitOfTemperature.CELSIUS
+    _attr_native_temperature_unit = UnitOfTemperature.CELSIUS
 
     def __init__(
         self,
-        coordinator,
+        coordinator: DeLonghiCoordinator,
     ) -> None:
         """Initialize the climate entity."""
         super().__init__(coordinator)
@@ -261,21 +272,19 @@ class DeLonghiHeater(CoordinatorEntity, ClimateEntity):
 
         self._attr_unique_id = f"delonghi_heater_{self._dsn}"
         self._attr_device_info = coordinator.get_device_info()
+        self._update_attributes()
 
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
+    def _read_extra_state_attributes(self) -> dict[str, Any]:
         """Return additional state attributes."""
         return dict(self.coordinator.data)
 
-    @property
-    def hvac_mode(self) -> HVACMode:
+    def _read_hvac_mode(self) -> HVACMode:
         """Return current operation mode."""
         # Check if device is on/off first
         status = self.coordinator.data.get("device_status")
         return HVACMode.HEAT if status == 1 else HVACMode.OFF
 
-    @property
-    def hvac_action(self) -> HVACAction | None:
+    def _read_hvac_action(self) -> HVACAction | None:
         """Return the current running hvac operation."""
         status = self.coordinator.data.get("device_status")
         if status == 1:  # ON
@@ -283,27 +292,25 @@ class DeLonghiHeater(CoordinatorEntity, ClimateEntity):
             return HVACAction.IDLE if power_level == 0 else HVACAction.HEATING
         return HVACAction.OFF
 
-    @property
-    def preset_mode(self) -> str | None:
+    def _read_preset_mode(self) -> str | None:
         """Return the current preset mode."""
         device_mode = self.coordinator.data.get("device_mode")
-        return self.preset_modes[device_mode-1] if device_mode in (1, 2, 3, 4) else None
+        return HEATER_PRESET_MODES[device_mode-1] if device_mode in (1, 2, 3, 4) else None
 
-    @property
-    def current_temperature(self) -> float | None:
+    def _read_native_current_temperature(self) -> float | None:
         """Return the current temperature."""
         return self.coordinator.data.get("room_temp")
 
-    @property
-    def target_temperature(self) -> float | None:
+    def _read_native_target_temperature(self) -> float | None:
         """Return the temperature we try to reach."""
         return self.coordinator.data.get("temperature_setpoint")
 
-    @property
-    def fan_mode(self) -> str | None:
+    def _read_fan_mode(self) -> str | None:
         """Return the fan mode."""
         power_level = self.coordinator.data.get("current_power_level", 0)
-        return self.fan_modes[power_level]
+        if not isinstance(power_level, int) or not 0 <= power_level < len(HEATER_FAN_MODES):
+            return None
+        return HEATER_FAN_MODES[power_level]
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """Set new target hvac mode."""
@@ -328,10 +335,10 @@ class DeLonghiHeater(CoordinatorEntity, ClimateEntity):
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
         """Set new target preset mode."""
-        if preset_mode not in self.preset_modes:
+        if preset_mode not in HEATER_PRESET_MODES:
             _LOGGER.error("Invalid preset mode: %s", preset_mode)
             return
-        device_mode = self.preset_modes.index(preset_mode) + 1
+        device_mode = HEATER_PRESET_MODES.index(preset_mode) + 1
         if await self._api.set_device_property(self._dsn, "set_device_mode", device_mode):
             await self.coordinator.async_request_refresh()
         else:
@@ -339,7 +346,10 @@ class DeLonghiHeater(CoordinatorEntity, ClimateEntity):
 
     async def async_set_fan_mode(self, fan_mode: str) -> None:
         """Set new target fan mode."""
-        power_level = self.fan_modes.index(fan_mode)
+        if fan_mode not in HEATER_FAN_MODES:
+            _LOGGER.error("Invalid fan mode: %s", fan_mode)
+            return
+        power_level = HEATER_FAN_MODES.index(fan_mode)
         if await self._api.set_device_property(self._dsn, "set_power_level", power_level):
             await self.coordinator.async_request_refresh()
         else:
@@ -354,3 +364,13 @@ class DeLonghiHeater(CoordinatorEntity, ClimateEntity):
             await self.coordinator.async_request_refresh()
         else:
             _LOGGER.error("Failed to set temperature setpoint")
+
+    def _update_attributes(self) -> None:
+        """Refresh HA backing attributes from the coordinator snapshot."""
+        self._attr_extra_state_attributes = self._read_extra_state_attributes()
+        self._attr_hvac_mode = self._read_hvac_mode()
+        self._attr_hvac_action = self._read_hvac_action()
+        self._attr_preset_mode = self._read_preset_mode()
+        self._attr_native_current_temperature = self._read_native_current_temperature()
+        self._attr_native_target_temperature = self._read_native_target_temperature()
+        self._attr_fan_mode = self._read_fan_mode()

@@ -13,10 +13,12 @@ from homeassistant.components.number import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import PERCENTAGE, UnitOfTemperature
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
+from .coordinator import DeLonghiCoordinator
+from .entity import DeLonghiEntity
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -69,14 +71,14 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
-class DeLonghiNumber(CoordinatorEntity, NumberEntity):
+class DeLonghiNumber(DeLonghiEntity, NumberEntity):
     """Representation of a De'Longhi number entity."""
 
     _attr_has_entity_name = True
 
     def __init__(
         self,
-        coordinator,
+        coordinator: DeLonghiCoordinator,
         description: NumberEntityDescription,
     ) -> None:
         """Initialize the number entity."""
@@ -85,16 +87,16 @@ class DeLonghiNumber(CoordinatorEntity, NumberEntity):
         self._attr_unique_id = f"{coordinator.dsn}_{description.key}"
 
         # Device information
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, coordinator.dsn)},
-            "name": coordinator.device_name,
-            "manufacturer": "De'Longhi",
-            "model": coordinator.device_model,
-            "sw_version": coordinator.device_version,
-        }
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, coordinator.dsn)},
+            name=coordinator.device_name,
+            manufacturer="De'Longhi",
+            model=coordinator.device_model,
+            sw_version=coordinator.device_version,
+        )
+        self._update_attributes()
 
-    @property
-    def native_value(self) -> float | None:
+    def _read_native_value(self) -> float | None:
         """Return the current value."""
         return self.coordinator.data.get(self.entity_description.key)
 
@@ -117,8 +119,12 @@ class DeLonghiNumber(CoordinatorEntity, NumberEntity):
             _LOGGER.error("Failed to set %s to %s", self.entity_description.key, value)
 
     @property
-    def available(self) -> bool:
+    def available(self) -> bool:  # pyright: ignore[reportIncompatibleVariableOverride]
         """Return if entity is available."""
         return (
             super().available and self.entity_description.key in self.coordinator.data
         )
+
+    def _update_attributes(self) -> None:
+        """Refresh HA backing attributes from the coordinator snapshot."""
+        self._attr_native_value = self._read_native_value()

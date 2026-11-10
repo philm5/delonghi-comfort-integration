@@ -2,9 +2,9 @@ name: Validate
 
 on:
   push:
-    branches: [main, master]
+    branches: [main]
   pull_request:
-    branches: [main, master]
+    branches: [main]
 
 permissions:
   contents: read
@@ -22,6 +22,8 @@ jobs:
       run: uv sync --locked
     - name: Check dependency compatibility
       run: uv pip check
+    - name: Check Python types
+      run: uv run --frozen pyright
     - name: Run regression and Marketplace tests
       run: uv run --frozen pytest
     - name: Check Python syntax

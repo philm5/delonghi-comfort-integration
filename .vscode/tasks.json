@@ -2,6 +2,14 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "Python: type check project",
+      "type": "process",
+      "command": "uv",
+      "args": ["run", "--frozen", "pyright"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
       "label": "HA: start debug container",
       "type": "process",
       "command": "uv",

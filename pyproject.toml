@@ -9,6 +9,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "pyright==1.1.414",
     "pytest==9.2.0",
     "pytest-asyncio==1.4.1.post1",
 ]
@@ -16,6 +17,14 @@ dev = [
 [tool.uv]
 package = false
 default-groups = ["dev"]
+
+[tool.pyright]
+include = ["custom_components", "scripts", "tests", "discover.py"]
+typeCheckingMode = "standard"
+pythonVersion = "3.14"
+venvPath = "."
+venv = ".venv"
+reportUnnecessaryTypeIgnoreComment = "error"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
